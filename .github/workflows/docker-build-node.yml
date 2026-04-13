@@ -74,6 +74,11 @@ on:
         required: false
         type: boolean
         default: true
+      scan-trivyignores:
+        description: 'Path to .trivyignore file (relative to build context) for suppressing known upstream CVEs'
+        required: false
+        type: string
+        default: ''
 
     outputs:
       tags:
@@ -162,6 +167,7 @@ jobs:
           severity: ${{ inputs.scan-severity }}
           exit-code: ${{ inputs.scan-exit-code }}
           ignore-unfixed: ${{ inputs.scan-ignore-unfixed }}
+          trivyignores: ${{ inputs.scan-trivyignores }}
           scanners: 'vuln'
 
       # ── Determine scan result ──
