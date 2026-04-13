@@ -1,7 +1,11 @@
 name: Docker Build & Push (Go)
 
-# Reusable workflow: builds a Go service Docker image and pushes to GHCR.
-# Designed for Go microservices; create docker-build-node.yml etc. for other stacks.
+# Reusable workflow: builds a Go service Docker image, scans for vulnerabilities,
+# and pushes to GHCR only if the scan passes.
+#
+# Security: When scan-before-push is enabled (default), the image is built locally
+# (--load), scanned with Trivy, and only pushed if no vulnerabilities are found.
+# This prevents vulnerable images from reaching the registry.
 
 on:
   workflow_call:
@@ -50,6 +54,26 @@ on:
         required: false
         type: boolean
         default: false
+      scan-before-push:
+        description: 'Scan image with Trivy before pushing to registry'
+        required: false
+        type: boolean
+        default: true
+      scan-severity:
+        description: 'Trivy severity filter for pre-push scan (e.g. CRITICAL,HIGH)'
+        required: false
+        type: string
+        default: 'CRITICAL,HIGH'
+      scan-exit-code:
+        description: 'Trivy exit code on vulnerability found (0=warn only, 1=block push)'
+        required: false
+        type: string
+        default: '1'
+      scan-ignore-unfixed:
+        description: 'Ignore vulnerabilities without a fix available'
+        required: false
+        type: boolean
+        default: true
 
     outputs:
       tags:
@@ -58,6 +82,9 @@ on:
       digest:
         description: 'Image digest'
         value: ${{ jobs.build.outputs.digest }}
+      scan-status:
+        description: 'Pre-push scan result: pass, fail, or skipped'
+        value: ${{ jobs.build.outputs.scan-status }}
 
 jobs:
   build:
@@ -70,7 +97,8 @@ jobs:
 
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.push.outputs.digest }}
+      scan-status: ${{ steps.scan-result.outputs.status }}
 
     steps:
       - name: Checkout
@@ -105,14 +133,64 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             ${{ inputs.tags }}
 
-      - name: Build and push Docker image
-        id: build
+      # ── Build locally for scanning (--load, single platform) ──
+      - name: Build image (local)
+        id: build-local
+        if: inputs.push && inputs.scan-before-push
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-main
+            type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-${{ github.ref_name }}
+          provenance: false
+
+      # ── Trivy scan (local image, before push) ──
+      - name: Trivy pre-push scan
+        id: trivy
+        if: inputs.push && inputs.scan-before-push
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          format: 'table'
+          severity: ${{ inputs.scan-severity }}
+          exit-code: ${{ inputs.scan-exit-code }}
+          ignore-unfixed: ${{ inputs.scan-ignore-unfixed }}
+          scanners: 'vuln'
+
+      # ── Determine scan result ──
+      - name: Set scan result
+        id: scan-result
+        if: always()
+        run: |
+          if [ "${{ inputs.scan-before-push }}" != "true" ] || [ "${{ inputs.push }}" != "true" ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.trivy.outcome }}" == "success" ]; then
+            echo "status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "status=fail" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Push to registry (only if scan passed or scanning disabled) ──
+      - name: Push image to registry
+        id: push
+        if: >-
+          inputs.push && (
+            !inputs.scan-before-push ||
+            steps.trivy.outcome == 'success'
+          )
         uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           platforms: ${{ inputs.platforms }}
-          push: ${{ inputs.push }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ inputs.build-args }}
@@ -123,13 +201,66 @@ jobs:
           provenance: true
           sbom: ${{ inputs.sbom }}
 
+      # ── Build without scan (when scan-before-push is false) ──
+      - name: Build and push (no pre-scan)
+        id: build-no-scan
+        if: inputs.push && !inputs.scan-before-push
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-main
+            type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-${{ github.ref_name }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-${{ github.ref_name }},mode=max
+          provenance: true
+          sbom: ${{ inputs.sbom }}
+
+      # ── Build only (no push) ──
+      - name: Build image (no push)
+        id: build-only
+        if: '!inputs.push && !inputs.scan-before-push'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-main
+            type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-${{ github.ref_name }}
+          provenance: false
+
       - name: Generate build summary
+        if: always()
         run: |
+          DIGEST="${{ steps.push.outputs.digest || steps.build-no-scan.outputs.digest || 'N/A (not pushed)' }}"
+          PUSHED="false"
+          if [ -n "${{ steps.push.outputs.digest }}" ] || [ -n "${{ steps.build-no-scan.outputs.digest }}" ]; then
+            PUSHED="true"
+          fi
+
           echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Image | \`${{ inputs.image-name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Tags | ${{ steps.meta.outputs.tags }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Digest | \`${{ steps.build.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Pushed | ${{ inputs.push }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Digest | \`${DIGEST}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed | ${PUSHED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pre-push Scan | **${{ steps.scan-result.outputs.status }}** |" >> $GITHUB_STEP_SUMMARY
+
+      # ── Fail job if scan failed (ensures the job status reflects the scan) ──
+      - name: Fail on scan failure
+        if: always() && steps.scan-result.outputs.status == 'fail'
+        run: |
+          echo "::error::Pre-push Trivy scan failed: vulnerabilities found matching severity filter (${{ inputs.scan-severity }}). Image was NOT pushed to registry."
+          exit 1

@@ -138,10 +138,12 @@ jobs:
 
 ## docker-build-go.yml
 
-**Purpose:** Build a Go service Docker image and push to GHCR
-**Features:** Multi-platform builds, registry caching, provenance, SBOM, default tagging via `docker/metadata-action`
+**Purpose:** Build a Go service Docker image, scan for vulnerabilities, and push to GHCR only if clean
+**Features:** **Scan-before-push** (Trivy), multi-platform builds, registry caching, provenance, SBOM, default tagging via `docker/metadata-action`
 
-> This is the **Go-specific builder**. It outputs `tags` and `digest` that can be consumed by `trivy-scan.yml` and `docker-sign.yml`. For other stacks, create `docker-build-node.yml`, `docker-build-python.yml`, etc. with the same output interface.
+> This is the **Go-specific builder**. It outputs `tags`, `digest`, and `scan-status` that can be consumed by `docker-sign.yml` and optionally `trivy-scan.yml` (for reporting). For other stacks, see `docker-build-node.yml`, `docker-build-python.yml`, etc. with the same output interface.
+
+> **Security**: When `scan-before-push` is enabled (default), the image is built locally (`--load`), scanned with Trivy, and only pushed to GHCR if no vulnerabilities matching the severity filter are found. This prevents FluxCD from auto-deploying vulnerable images.
 
 ### Inputs
 
@@ -156,6 +158,10 @@ jobs:
 | `tags` | string | `""` | No | Custom tags (comma-separated); empty = default tagging |
 | `runs-on` | string | `"ubuntu-latest"` | No | Runner type |
 | `sbom` | boolean | `false` | No | Generate SBOM attestation |
+| `scan-before-push` | boolean | `true` | No | Scan image with Trivy before pushing to registry |
+| `scan-severity` | string | `"CRITICAL,HIGH"` | No | Trivy severity filter for pre-push scan |
+| `scan-exit-code` | string | `"1"` | No | Trivy exit code on vulnerability found (`0`=warn, `1`=block push) |
+| `scan-ignore-unfixed` | boolean | `true` | No | Ignore vulnerabilities without a fix available |
 
 ### Outputs
 
@@ -163,9 +169,11 @@ jobs:
 |--------|-------------|
 | `tags` | Generated image tags (newline-separated) |
 | `digest` | Image digest (`sha256:...`) |
+| `scan-status` | Pre-push scan result: `pass`, `fail`, or `skipped` |
 
 ### Usage
 
+**With scan-before-push (default, recommended):**
 ```yaml
 jobs:
   build:
@@ -173,12 +181,33 @@ jobs:
     with:
       image-name: my-service
       push: true
+      # scan-before-push: true      # default
+      # scan-severity: 'CRITICAL,HIGH'  # default
+      # scan-exit-code: '1'          # default — blocks push on CVEs
     secrets: inherit
     permissions:
       contents: read
       packages: write
       actions: read
 ```
+
+**Without scan (opt-out):**
+```yaml
+jobs:
+  build:
+    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    with:
+      image-name: my-service
+      push: true
+      scan-before-push: false
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+```
+
+> **Note**: `--load` (used for local scanning) only supports single-platform builds. If `platforms` is `linux/amd64` (default), this works. For multi-arch builds, the amd64 image is scanned locally; the multi-arch push only proceeds if the scan passes.
 
 ---
 
@@ -218,10 +247,10 @@ jobs:
 
 ## trivy-scan.yml
 
-**Purpose:** Docker image vulnerability scanning
+**Purpose:** Docker image vulnerability reporting (post-push)
 **Features:** Trivy scanner, SARIF upload to GitHub Security tab, step summary, optional Google Sheets reporting, structured outputs
 
-> Chain after any builder workflow (`docker-build-go.yml`, etc.) that pushes an image to GHCR. Place before `docker-sign.yml` to ensure only clean images are signed.
+> **Note**: This workflow is for **reporting only** — it is no longer the security gate. The security gate is now built into `docker-build-go.yml` and `docker-build-node.yml` via `scan-before-push`. Use `trivy-scan.yml` for detailed SARIF reporting and Google Sheets tracking after the image has been pushed.
 
 ### Inputs
 
@@ -470,28 +499,29 @@ jobs:
 
 ## Architecture
 
-The `docker-build-go.yml` is the **Go-specific builder**. Future stacks (`docker-build-node.yml`, `docker-build-python.yml`, etc.) follow the same output interface (`tags` + `digest`), sharing the downstream scan and sign workflows:
+The `docker-build-go.yml` is the **Go-specific builder** with integrated Trivy scanning. Future stacks (`docker-build-node.yml`, `docker-build-python.yml`, etc.) follow the same output interface (`tags` + `digest` + `scan-status`), sharing the downstream sign workflow:
 
 ```mermaid
 flowchart TD
-    subgraph builders ["Stack-specific Builders"]
-        GO["docker-build-go.yml"]
-        NODE["docker-build-node.yml (future)"]
+    subgraph builders ["Stack-specific Builders (scan-before-push)"]
+        GO["docker-build-go.yml<br/>(--load → Trivy → push)"]
+        NODE["docker-build-node.yml<br/>(--load → Trivy → push)"]
         PYTHON["docker-build-python.yml (future)"]
     end
     subgraph shared ["Shared Downstream"]
-        TRIVY["trivy-scan.yml"]
         SIGN["docker-sign.yml"]
+        TRIVY_RPT["trivy-scan.yml<br/>(SARIF reporting, optional)"]
     end
-    GO -->|"outputs: tags, digest"| TRIVY
-    NODE -->|"outputs: tags, digest"| TRIVY
-    PYTHON -->|"outputs: tags, digest"| TRIVY
-    TRIVY -->|"pass"| SIGN
+    GO -->|"outputs: tags, digest, scan-status"| SIGN
+    NODE -->|"outputs: tags, digest, scan-status"| SIGN
+    PYTHON -->|"outputs: tags, digest, scan-status"| SIGN
+    GO -.->|"optional"| TRIVY_RPT
+    NODE -.->|"optional"| TRIVY_RPT
 ```
 
 ### Overall CI Flow (Primary Diagram)
 
-Use this as the canonical high-level CI flow after adding `gitleaks.yml`.
+Canonical high-level CI flow with scan-before-push.
 
 ```mermaid
 flowchart TD
@@ -503,9 +533,9 @@ flowchart TD
     end
 
     subgraph buildOnly ["Push to main/dev only"]
-        BUILD["docker-build-go.yml"]
-        TRIVY["trivy-scan.yml"]
+        BUILD["docker-build-go.yml<br/>(--load → Trivy → push)"]
         SIGN["docker-sign.yml"]
+        TRIVY_RPT["trivy-scan.yml<br/>(optional report)"]
     end
 
     NOTIFY["status.yml"]
@@ -513,21 +543,21 @@ flowchart TD
     GOCHECK --> SONAR
     GITLEAKS --> SONAR
     SONAR --> BUILD
-    BUILD --> TRIVY
-    TRIVY --> SIGN
+    BUILD --> SIGN
+    BUILD -.-> TRIVY_RPT
 
     PRCHECKS --> NOTIFY
     GOCHECK --> NOTIFY
     GITLEAKS --> NOTIFY
     SONAR --> NOTIFY
     BUILD --> NOTIFY
-    TRIVY --> NOTIFY
     SIGN --> NOTIFY
+    TRIVY_RPT --> NOTIFY
 ```
 
 ### Detailed CI Flow: Pull Request
 
-On PR branches: run code quality + secret scanning + notifications. Docker jobs are **skipped** (`if: github.ref == 'refs/heads/main'`).
+On PR branches: run code quality + secret scanning + notifications. Docker jobs are **skipped**.
 
 ```mermaid
 flowchart TD
@@ -549,7 +579,7 @@ flowchart TD
 
 ### Detailed CI Flow: Push to main (merged)
 
-Full pipeline on main: build -> scan -> sign. If scan fails, sign is automatically skipped.
+Full pipeline on main: build (with integrated scan) -> sign. If pre-push scan fails, the image is never pushed and signing is automatically skipped.
 
 ```mermaid
 flowchart TD
@@ -558,11 +588,11 @@ flowchart TD
         GITLEAKS2["gitleaks.yml"]
         SONAR2["sonarqube.yml"]
 
-        BUILD["docker-build-go.yml"]
-        SCAN["trivy-scan.yml"]
+        BUILD["docker-build-go.yml<br/>(--load → Trivy → push)"]
         SIGN["docker-sign.yml"]
+        TRIVY_RPT["trivy-scan.yml<br/>(SARIF report, optional)"]
 
-        DBINIT["docker-build-go.yml (migration)"]
+        DBINIT["docker-build-go.yml (migration)<br/>(--load → Trivy → push)"]
 
         NOTIFY2["status.yml"]
 
@@ -570,16 +600,19 @@ flowchart TD
         GITLEAKS2 --> SONAR2
         SONAR2 --> BUILD
         SONAR2 --> DBINIT
-        BUILD -->|"outputs: tags, digest"| SCAN
-        SCAN -->|"success"| SIGN
-        SCAN -.->|"fail"| SIGN_SKIP["sign SKIPPED"]
+        BUILD -->|"scan pass → pushed"| SIGN
+        BUILD -.->|"scan fail"| BUILD_FAIL["Image NOT pushed"]
+        BUILD -.->|"optional"| TRIVY_RPT
 
         BUILD --> NOTIFY2
-        SCAN --> NOTIFY2
         SIGN --> NOTIFY2
+        TRIVY_RPT --> NOTIFY2
         GITLEAKS2 --> NOTIFY2
         DBINIT --> NOTIFY2
     end
+
+    style BUILD fill:#3b82f6,color:#fff
+    style BUILD_FAIL fill:#ef4444,color:#fff
 ```
 
 ---
@@ -646,9 +679,9 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 ```
 
-### Docker Build Pipeline (build -> scan -> sign)
+### Docker Build Pipeline (build with scan -> sign)
 
-Service repos chain the individual workflows explicitly. Each job passes outputs to the next via `needs`:
+Service repos call the builder workflow which handles scan-before-push internally. Each job passes outputs to the next via `needs`:
 
 ```yaml
 name: Docker Build
@@ -666,26 +699,28 @@ permissions:
   security-events: write
 
 jobs:
-  # Step 1: Build & push
+  # Step 1: Build, scan, and push (scan is integrated)
   build:
     uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
+      # scan-before-push: true  # default — scans before pushing
     secrets: inherit
     permissions:
       contents: read
       packages: write
       actions: read
 
-  # Step 2: Vulnerability scan (uses digest from build)
-  scan:
+  # Step 2 (optional): Detailed vulnerability report (SARIF + Google Sheets)
+  trivy-report:
     needs: [build]
+    if: needs.build.outputs.scan-status == 'pass'
     uses: duyhenryer/shared-workflows/.github/workflows/trivy-scan.yml@main
     with:
       image-ref: ghcr.io/${{ github.repository }}/my-service@${{ needs.build.outputs.digest }}
-      severity: 'CRITICAL,HIGH'
-      exit-code: '1'
+      severity: 'CRITICAL,HIGH,MEDIUM'
+      exit-code: '0'         # non-blocking (reporting only)
       ignore-unfixed: true
     secrets: inherit
     permissions:
@@ -693,9 +728,9 @@ jobs:
       packages: read
       security-events: write
 
-  # Step 3: Sign (uses tags + digest from build; auto-skipped if scan fails)
+  # Step 3: Sign (auto-skipped if build fails due to scan)
   sign:
-    needs: [build, scan]
+    needs: [build]
     uses: duyhenryer/shared-workflows/.github/workflows/docker-sign.yml@main
     with:
       tags: ${{ needs.build.outputs.tags }}
@@ -707,7 +742,7 @@ jobs:
       id-token: write
 
   notify:
-    needs: [build, scan, sign]
+    needs: [build, trivy-report, sign]
     if: always()
     uses: duyhenryer/shared-workflows/.github/workflows/status.yml@main
     with:
@@ -716,7 +751,7 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 ```
 
-> **How it works:** `sign` depends on both `build` and `scan`. If `scan` fails, GitHub automatically skips `sign` -- no `if:` condition needed. To scan without blocking sign, set `exit-code: '0'`.
+> **How it works:** The builder workflow handles `--load` → Trivy scan → push internally. If the scan fails, the image is never pushed and the job fails. `sign` depends on `build` — if build fails, sign is auto-skipped. `trivy-report` is optional and non-blocking (for SARIF + Google Sheets reporting).
 
 ---
 
@@ -845,19 +880,19 @@ with:
   fail-on-quality-gate: false
 ```
 
-### "Trivy scan blocking image signing"
+### "Trivy scan blocking image push"
 
-**Solution:** If you want to scan without blocking the sign phase, set `exit-code` to `'0'` in your `trivy-scan.yml` call:
+**Solution:** If you want to scan without blocking the push, set `scan-exit-code` to `'0'` in your `docker-build-go.yml` call:
 ```yaml
-  scan:
-    needs: [build]
-    uses: duyhenryer/shared-workflows/.github/workflows/trivy-scan.yml@main
+  build:
+    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
     with:
-      image-ref: ghcr.io/${{ github.repository }}/my-service@${{ needs.build.outputs.digest }}
-      exit-code: '0'  # Warn only, don't block signing
+      image-name: my-service
+      push: true
+      scan-exit-code: '0'  # Warn only, don't block push
 ```
 
-Or to skip scanning entirely, simply remove the `scan` job and have `sign` depend only on `build`.
+Or to skip scanning entirely, set `scan-before-push: false`.
 
 ---
 
