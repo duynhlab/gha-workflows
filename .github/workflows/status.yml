@@ -52,7 +52,7 @@ jobs:
       workflow_status_rows_json: ${{ steps.fetch-workflow-status.outputs.workflow_status_rows_json }}
       jobs_status_rows_json: ${{ steps.fetch-workflow-status.outputs.jobs_status_rows_json }}
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         id: fetch-workflow-status
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -158,7 +158,7 @@ jobs:
       - workflow-status
     steps:
       - name: Slack channel
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         id: slack-channel
         with:
           script: |
