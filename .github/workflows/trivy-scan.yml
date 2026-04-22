@@ -94,7 +94,7 @@ jobs:
 
       # Step 1: Scan with JSON output (always succeed so we can parse results)
       - name: Trivy scan (JSON)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ inputs.image-ref }}
           format: 'json'
@@ -176,7 +176,7 @@ jobs:
 
       # Step 3: Scan with SARIF output for GitHub Security tab
       - name: Trivy scan (SARIF)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ inputs.image-ref }}
           format: 'sarif'
