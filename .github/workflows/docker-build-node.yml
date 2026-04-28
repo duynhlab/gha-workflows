@@ -160,7 +160,7 @@ jobs:
       - name: Trivy pre-push scan
         id: trivy
         if: inputs.push && inputs.scan-before-push
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           format: 'table'
