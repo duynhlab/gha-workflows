@@ -82,7 +82,7 @@ jobs:
           path: .
 
       - name: SonarCloud Scan
-        uses: sonarsource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # tag: v7.1.0
+        uses: sonarsource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # tag: v8.1.0
         with:
           args: >
             -Dsonar.projectKey=${{ inputs.project-key }}
