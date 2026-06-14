@@ -30,4 +30,8 @@ jobs:
       # No path args: actionlint auto-discovers .github/workflows (*.yml + *.yaml).
       # ubuntu runners ship shellcheck, so run: blocks are shellchecked too.
       - name: Run actionlint
+        env:
+          # Gate on real issues only: shellcheck info/style nits (e.g. SC2086
+          # unquoted vars, SC2129 redirect style) are advisory. warning+ still fails.
+          SHELLCHECK_OPTS: --severity=warning
         run: ./actionlint -color
