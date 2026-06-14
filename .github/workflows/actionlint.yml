@@ -1,0 +1,37 @@
+name: Lint
+
+# Self-CI: lint this repo's own workflow files with actionlint on every PR and
+# push to main, so a broken reusable workflow is caught before consumers pull @main.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          bash <(curl -sSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}"
+      # No path args: actionlint auto-discovers .github/workflows (*.yml + *.yaml).
+      # ubuntu runners ship shellcheck, so run: blocks are shellchecked too.
+      - name: Run actionlint
+        env:
+          # Gate on real issues only: shellcheck info/style nits (e.g. SC2086
+          # unquoted vars, SC2129 redirect style) are advisory. warning+ still fails.
+          SHELLCHECK_OPTS: --severity=warning
+        run: ./actionlint -color
