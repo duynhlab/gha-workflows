@@ -95,6 +95,7 @@ jobs:
           SONAR_HOST_URL: https://sonarcloud.io
 
       - name: SonarCloud Quality Gate
+        id: qg
         if: inputs.quality-gate-wait
         uses: sonarsource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # tag: v1.2.0
         continue-on-error: ${{ !inputs.fail-on-quality-gate }}
@@ -107,10 +108,18 @@ jobs:
       - name: Quality Gate Status
         if: always()
         run: |
+          GATE="${{ steps.qg.outputs.quality-gate-status || 'not evaluated' }}"
+          case "$GATE" in
+            PASSED|OK) GATE_DISPLAY="✅ PASSED" ;;
+            FAILED|ERROR) GATE_DISPLAY="❌ FAILED" ;;
+            *) GATE_DISPLAY="$GATE" ;;
+          esac
           echo "## 🔍 SonarCloud Analysis Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Quality Gate | **${GATE_DISPLAY}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Enforced (fail-on-gate) | \`${{ inputs.fail-on-quality-gate }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Project Key | \`${{ inputs.project-key }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Organization | \`${{ inputs.organization }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Dashboard | [View on SonarCloud](https://sonarcloud.io/project/overview?id=${{ inputs.project-key }}) |" >> $GITHUB_STEP_SUMMARY

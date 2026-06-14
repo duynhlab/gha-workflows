@@ -60,12 +60,17 @@ on:
         type: boolean
         default: true
       scan-severity:
-        description: 'Trivy severity filter for pre-push scan (e.g. CRITICAL,HIGH)'
+        description: 'Severities to scan for and REPORT in the summary (e.g. CRITICAL,HIGH)'
         required: false
         type: string
         default: 'CRITICAL,HIGH'
+      scan-block-severity:
+        description: 'Severities that BLOCK the push. The rest are report-only. Default: only CRITICAL blocks; HIGH is reported but does not block (avoids being stuck on base-image HIGH CVEs with no upstream fix yet).'
+        required: false
+        type: string
+        default: 'CRITICAL'
       scan-exit-code:
-        description: 'Trivy exit code on vulnerability found (0=warn only, 1=block push)'
+        description: 'DEPRECATED / no longer gates the push — superseded by scan-block-severity. Kept for backward compatibility.'
         required: false
         type: string
         default: '1'
@@ -156,31 +161,95 @@ jobs:
             type=registry,ref=ghcr.io/${{ github.repository }}/${{ inputs.image-name }}:cache-${{ github.ref_name }}
           provenance: false
 
-      # ── Trivy scan (local image, before push) ──
+      # ── Trivy scan (local image, before push) → JSON for parsing ──
       - name: Trivy pre-push scan
         id: trivy
         if: inputs.push && inputs.scan-before-push
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
-          format: 'table'
+          format: 'json'
+          output: 'trivy-results.json'
           severity: ${{ inputs.scan-severity }}
-          exit-code: ${{ inputs.scan-exit-code }}
+          exit-code: '0' # never fail here; we gate ourselves on scan-block-severity below
           ignore-unfixed: ${{ inputs.scan-ignore-unfixed }}
           trivyignores: ${{ inputs.scan-trivyignores }}
           scanners: 'vuln'
 
-      # ── Determine scan result ──
-      - name: Set scan result
+      # ── Parse findings, write the job summary, decide the push gate ──
+      # Policy: block the push only on scan-block-severity (default CRITICAL); other
+      # reported severities (e.g. HIGH) are surfaced but do NOT block.
+      - name: Evaluate scan & write summary
         id: scan-result
         if: always()
         run: |
           if [ "${{ inputs.scan-before-push }}" != "true" ] || [ "${{ inputs.push }}" != "true" ]; then
-            echo "status=skipped" >> $GITHUB_OUTPUT
-          elif [ "${{ steps.trivy.outcome }}" == "success" ]; then
-            echo "status=pass" >> $GITHUB_OUTPUT
+            echo "status=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CRITICAL=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json 2>/dev/null || echo 0)
+          HIGH=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json 2>/dev/null || echo 0)
+          MEDIUM=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json 2>/dev/null || echo 0)
+          LOW=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json 2>/dev/null || echo 0)
+
+          # Sum findings whose severity is in scan-block-severity → these block the push.
+          BLOCK=0
+          IFS=',' read -ra SEV <<< "${{ inputs.scan-block-severity }}"
+          for s in "${SEV[@]}"; do
+            case "$(echo "$s" | xargs)" in
+              CRITICAL) BLOCK=$((BLOCK + CRITICAL)) ;;
+              HIGH)     BLOCK=$((BLOCK + HIGH)) ;;
+              MEDIUM)   BLOCK=$((BLOCK + MEDIUM)) ;;
+              LOW)      BLOCK=$((BLOCK + LOW)) ;;
+            esac
+          done
+
+          if [ "$BLOCK" -gt 0 ]; then
+            echo "status=fail" >> "$GITHUB_OUTPUT"
           else
-            echo "status=fail" >> $GITHUB_OUTPUT
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo "## Pre-push Trivy Scan"
+            echo ""
+            echo "| Severity | Count |"
+            echo "|----------|-------|"
+            echo "| CRITICAL | ${CRITICAL} |"
+            echo "| HIGH | ${HIGH} |"
+            echo "| MEDIUM | ${MEDIUM} |"
+            echo "| LOW | ${LOW} |"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| Image | \`${{ inputs.image-name }}\` |"
+            echo "| Report severity | \`${{ inputs.scan-severity }}\` |"
+            echo "| Block severity | \`${{ inputs.scan-block-severity }}\` |"
+            echo "| Ignore unfixed | \`${{ inputs.scan-ignore-unfixed }}\` |"
+            if [ "$BLOCK" -gt 0 ]; then
+              echo "| Result | **BLOCKED** — ${BLOCK} finding(s) at block severity; image NOT pushed |"
+            else
+              echo "| Result | **PASS** — push allowed (other findings reported below, not blocking) |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          VULN_LIST=$(jq -r '.Results[]? | .Vulnerabilities[]? | "| \(.VulnerabilityID) | \(.Severity) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "N/A") |"' trivy-results.json 2>/dev/null || true)
+          if [ -n "$VULN_LIST" ]; then
+            {
+              echo ""
+              echo "<details><summary>Findings (${CRITICAL} critical, ${HIGH} high)</summary>"
+              echo ""
+              echo "| CVE | Severity | Package | Installed | Fixed |"
+              echo "|-----|----------|---------|-----------|-------|"
+              echo "$VULN_LIST"
+              echo ""
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$HIGH" -gt 0 ] && [ "$BLOCK" -eq 0 ]; then
+            echo "::warning::Trivy reported ${HIGH} HIGH vulnerability(ies) (report-only, not blocking the push). See the job summary."
           fi
 
       # ── Push to registry (only if scan passed or scanning disabled) ──
@@ -189,7 +258,7 @@ jobs:
         if: >-
           inputs.push && (
             !inputs.scan-before-push ||
-            steps.trivy.outcome == 'success'
+            steps.scan-result.outputs.status == 'pass'
           )
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
@@ -265,8 +334,8 @@ jobs:
           echo "| Pre-push Scan | **${{ steps.scan-result.outputs.status }}** |" >> $GITHUB_STEP_SUMMARY
 
       # ── Fail job if scan failed (ensures the job status reflects the scan) ──
-      - name: Fail on scan failure
+      - name: Fail on blocking vulnerabilities
         if: always() && steps.scan-result.outputs.status == 'fail'
         run: |
-          echo "::error::Pre-push Trivy scan failed: vulnerabilities found matching severity filter (${{ inputs.scan-severity }}). Image was NOT pushed to registry."
+          echo "::error::Pre-push Trivy scan found vulnerabilities at block severity (${{ inputs.scan-block-severity }}). Image was NOT pushed to registry."
           exit 1
