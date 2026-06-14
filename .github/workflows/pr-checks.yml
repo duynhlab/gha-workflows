@@ -28,10 +28,14 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     steps:
     - name: Validate Source Branch
+      env:
+        HEAD_REF: ${{ github.head_ref }}
       run: |
-        # Allow standard gitflow/trunk-based prefixes
-        if [[ ! ${{ github.head_ref }} =~ ^(feature|feat|fix|bugfix|hotfix|release|chore|docs|refactor|dependabot|ci|renovate|build)\/ ]]; then
-          echo "Error: Source branch '${{ github.head_ref }}' does not match allowed patterns (feat/*, fix/*, chore/*, etc.)"
+        # Allow standard gitflow/trunk-based prefixes.
+        # HEAD_REF is passed via env (not interpolated into the script) to avoid
+        # shell injection from an attacker-controlled branch name.
+        if [[ ! "$HEAD_REF" =~ ^(feature|feat|fix|bugfix|hotfix|release|chore|docs|refactor|dependabot|ci|renovate|build)\/ ]]; then
+          echo "Error: Source branch '$HEAD_REF' does not match allowed patterns (feat/*, fix/*, chore/*, etc.)"
           echo "Create a new branch with a valid prefix and open a new PR."
           exit 1
         fi
@@ -42,7 +46,7 @@ jobs:
       thread_ts: ${{ steps.slack-notify.outputs.ts }}
     steps:
       - name: Checkout CODEOWNERS file
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           sparse-checkout: |
             .github/CODEOWNERS
@@ -70,7 +74,7 @@ jobs:
       ## Notify the PR details to codeowners on slack
       - name: Notify PR Event
         id: slack-notify
-        uses: slackapi/slack-github-action@v3.0.3
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
         with:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}

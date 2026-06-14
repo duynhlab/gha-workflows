@@ -1,5 +1,5 @@
 # Global owners — requested for review on every PR
-* @duyhenryer @duynebot
+* @duynhne @duynebot
 
 # Protect this file itself
-/.github/CODEOWNERS @duyhenryer
+/.github/CODEOWNERS @duynhne

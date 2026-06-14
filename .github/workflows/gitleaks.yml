@@ -52,21 +52,13 @@ jobs:
 
     steps:
       - name: Checkout caller repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
 
-      - name: Checkout shared-workflows (for composite action)
-        uses: actions/checkout@v6
-        with:
-          repository: duyhenryer/shared-workflows
-          path: .shared-workflows
-          sparse-checkout: |
-            .github/actions/gitleaks
-
       - name: Run Gitleaks
         id: gitleaks
-        uses: ./.shared-workflows/.github/actions/gitleaks
+        uses: duynhlab/gha-workflows/.github/actions/gitleaks@main
         with:
           version: ${{ inputs.gitleaks-version }}
           config-path: ${{ inputs.config-path }}
@@ -74,7 +66,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
           sarif_file: ${{ steps.gitleaks.outputs.sarif }}
         continue-on-error: true
