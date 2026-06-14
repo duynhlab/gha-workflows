@@ -783,7 +783,7 @@ Set these in your repository settings (Settings → Secrets and variables → Ac
 
 ### How `pr-checks.yml` uses CODEOWNERS
 
-The `pr-checks.yml` workflow automatically extracts global code owners from the caller repo's CODEOWNERS file and tags them in the Slack PR notification (e.g. `cc @duynhne @duynebot`).
+The `pr-checks.yml` workflow automatically extracts global code owners from the caller repo's CODEOWNERS file and tags them in the Slack PR notification (e.g. `cc @duynhne @duyhenryer @duynebot`).
 
 **Discovery order** (matches [GitHub's precedence](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners#codeowners-file-location)):
 
@@ -801,7 +801,7 @@ Each line is a **file pattern** followed by one or more **owners** (`@username` 
 
 ```gitignore
 # Global owners -- requested for review on every PR
-* @duynhne @duynebot
+* @duynhne @duyhenryer @duynebot
 
 # Team-based ownership
 *.go        @duynhne/backend-team
