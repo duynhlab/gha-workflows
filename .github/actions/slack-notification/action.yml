@@ -43,7 +43,7 @@ runs:
     - name: Send standalone CI status
       id: slack-standalone
       if: inputs.thread_ts == ''
-      uses: slackapi/slack-github-action@v3.0.1
+      uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
       with:
         method: chat.${{ inputs.update_ts && 'update' || 'postMessage' }}
         token: ${{ inputs.slack_bot_token }}
@@ -96,7 +96,7 @@ runs:
     - name: Reply CI status in thread
       id: slack-reply
       if: inputs.thread_ts != ''
-      uses: slackapi/slack-github-action@v3.0.1
+      uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
       with:
         method: chat.postMessage
         token: ${{ inputs.slack_bot_token }}

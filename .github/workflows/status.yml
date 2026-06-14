@@ -52,7 +52,7 @@ jobs:
       workflow_status_rows_json: ${{ steps.fetch-workflow-status.outputs.workflow_status_rows_json }}
       jobs_status_rows_json: ${{ steps.fetch-workflow-status.outputs.jobs_status_rows_json }}
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         id: fetch-workflow-status
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -158,7 +158,7 @@ jobs:
       - workflow-status
     steps:
       - name: Slack channel
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         id: slack-channel
         with:
           script: |
@@ -168,17 +168,9 @@ jobs:
             core.setOutput('slack_channel_id', slack_channel_id);
 
 
-      - name: Checkout shared-workflows (for composite action)
-        uses: actions/checkout@v6
-        with:
-          repository: duyhenryer/shared-workflows
-          path: .shared-workflows
-          sparse-checkout: |
-            .github/actions/slack-notification
-
       - name: Slack CI Notification
         if: ${{ steps.slack-channel.outputs.slack_channel_id != '' }}
-        uses: ./.shared-workflows/.github/actions/slack-notification
+        uses: duynhlab/gha-workflows/.github/actions/slack-notification@main
         with:
           channel_id: ${{ steps.slack-channel.outputs.slack_channel_id }}
           status: ${{ needs.workflow-status.outputs.status }}
@@ -188,7 +180,7 @@ jobs:
       # --- Google Sheets Reporting ---
       - name: Append workflow status to Google Sheet
         if: ${{ always() && inputs.gsheet_spreadsheet_id != '' }}
-        uses: jroehl/gsheet.action@v2.1.1
+        uses: jroehl/gsheet.action@ec5aa4154b217321530a31d5b2555e107b2e2b48 # v2.1.1
         with:
           spreadsheetId: ${{ inputs.gsheet_spreadsheet_id }}
           commands: |
@@ -208,7 +200,7 @@ jobs:
 
       - name: Append jobs status to Google Sheet
         if: ${{ always() && inputs.gsheet_spreadsheet_id != '' }}
-        uses: jroehl/gsheet.action@v2.1.1
+        uses: jroehl/gsheet.action@ec5aa4154b217321530a31d5b2555e107b2e2b48 # v2.1.1
         with:
           spreadsheetId: ${{ inputs.gsheet_spreadsheet_id }}
           commands: |

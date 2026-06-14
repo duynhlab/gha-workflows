@@ -14,7 +14,7 @@ on:
 
 jobs:
   check:
-    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
     with:
       command-test: 'go test ./...'
       lint: true
@@ -50,7 +50,7 @@ jobs:
 ```yaml
 jobs:
   go-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
     with:
       command-test: 'go test ./...'
       lint: true
@@ -61,7 +61,7 @@ jobs:
 ```yaml
 jobs:
   gitleaks:
-    uses: duyhenryer/shared-workflows/.github/workflows/gitleaks.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/gitleaks.yml@main
     continue-on-error: ${{ github.event_name != 'pull_request' }}
     with:
       config-path: '.gitleaks.toml'  # optional
@@ -74,7 +74,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
@@ -89,7 +89,7 @@ jobs:
 
   sign:
     needs: [build]
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-sign.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-sign.yml@main
     with:
       tags: ${{ needs.build.outputs.tags }}
       digest: ${{ needs.build.outputs.digest }}
@@ -104,7 +104,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
@@ -118,7 +118,7 @@ jobs:
   trivy-report:
     needs: [build]
     if: needs.build.outputs.scan-status == 'pass'
-    uses: duyhenryer/shared-workflows/.github/workflows/trivy-scan.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/trivy-scan.yml@main
     with:
       image-ref: ghcr.io/${{ github.repository }}/my-service@${{ needs.build.outputs.digest }}
       severity: 'CRITICAL,HIGH,MEDIUM'
@@ -132,7 +132,7 @@ jobs:
 
   sign:
     needs: [build]
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-sign.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-sign.yml@main
     with:
       tags: ${{ needs.build.outputs.tags }}
       digest: ${{ needs.build.outputs.digest }}
@@ -147,7 +147,7 @@ jobs:
 ```yaml
 jobs:
   terraform-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/tf-lint.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/tf-lint.yml@main
     with:
       tflint_minimum_failure_severity: 'error'
 ```
@@ -156,7 +156,7 @@ jobs:
 ```yaml
 jobs:
   notify-status:
-    uses: duyhenryer/shared-workflows/.github/workflows/status.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/status.yml@main
     with:
       slack_channel_id: "#dev-notifications"
     secrets: inherit

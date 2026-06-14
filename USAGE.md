@@ -37,7 +37,7 @@ Detailed documentation for all available workflows with inputs, outputs, and exa
 jobs:
   pr-checks:
     if: github.event_name == 'pull_request'
-    uses: duyhenryer/shared-workflows/.github/workflows/pr-checks.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/pr-checks.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
     secrets:
@@ -72,7 +72,7 @@ jobs:
 ```yaml
 jobs:
   go-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
     with:
       command-test: 'go test ./...'
     secrets: inherit
@@ -82,7 +82,7 @@ jobs:
 ```yaml
 jobs:
   go-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
     with:
       command-test: 'go test -race -coverprofile=coverage.out -covermode=atomic ./...'
       lint: true
@@ -125,7 +125,7 @@ jobs:
 jobs:
   gitleaks:
     if: "!startsWith(github.ref, 'refs/tags/')"
-    uses: duyhenryer/shared-workflows/.github/workflows/gitleaks.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/gitleaks.yml@main
     continue-on-error: ${{ github.event_name != 'pull_request' }}
     with:
       config-path: '.gitleaks.toml' # optional
@@ -177,7 +177,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
@@ -195,7 +195,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
@@ -232,7 +232,7 @@ jobs:
 jobs:
   sign:
     needs: [build]
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-sign.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-sign.yml@main
     with:
       tags: ${{ needs.build.outputs.tags }}
       digest: ${{ needs.build.outputs.digest }}
@@ -291,7 +291,7 @@ jobs:
 
   scan:
     needs: [build]
-    uses: duyhenryer/shared-workflows/.github/workflows/trivy-scan.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/trivy-scan.yml@main
     with:
       image-ref: ghcr.io/${{ github.repository }}/my-app@${{ needs.build.outputs.digest }}
       severity: 'CRITICAL,HIGH'
@@ -307,7 +307,7 @@ jobs:
 ```yaml
 jobs:
   scan:
-    uses: duyhenryer/shared-workflows/.github/workflows/trivy-scan.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/trivy-scan.yml@main
     with:
       image-ref: ghcr.io/${{ github.repository }}/my-app@sha256:abc123...
       gsheet_spreadsheet_id: "1AbC...xYz"
@@ -356,14 +356,14 @@ jobs:
 ```yaml
 jobs:
   go-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
     with:
       command-test: 'go test -race -coverprofile=coverage.out -covermode=atomic ./...'
     secrets: inherit
 
   sonar:
     needs: [go-check]
-    uses: duyhenryer/shared-workflows/.github/workflows/sonarqube.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@main
     with:
       project-key: my-org_my-project
       organization: my-org
@@ -391,7 +391,7 @@ jobs:
 ```yaml
 jobs:
   terraform-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/tf-lint.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/tf-lint.yml@main
     with:
       tflint_minimum_failure_severity: 'error'
 ```
@@ -429,7 +429,7 @@ jobs:
   notify:
     needs: [build, test]
     if: always()
-    uses: duyhenryer/shared-workflows/.github/workflows/status.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/status.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
     secrets:
@@ -441,7 +441,7 @@ jobs:
 jobs:
   pr-checks:
     if: github.event_name == 'pull_request'
-    uses: duyhenryer/shared-workflows/.github/workflows/pr-checks.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/pr-checks.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
     secrets:
@@ -452,7 +452,7 @@ jobs:
   notify:
     needs: [pr-checks, build, test]
     if: always()
-    uses: duyhenryer/shared-workflows/.github/workflows/status.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/status.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
       slack_thread_ts: ${{ needs.pr-checks.outputs.slack_thread_ts }}
@@ -634,7 +634,7 @@ jobs:
   # PR Validation
   pr-checks:
     if: github.event_name == 'pull_request'
-    uses: duyhenryer/shared-workflows/.github/workflows/pr-checks.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/pr-checks.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
     secrets:
@@ -642,7 +642,7 @@ jobs:
 
   # Go quality checks
   go-check:
-    uses: duyhenryer/shared-workflows/.github/workflows/go-check.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/go-check.yml@main
     with:
       command-test: 'go test -race -coverprofile=coverage.out -covermode=atomic ./...'
       lint: true
@@ -651,7 +651,7 @@ jobs:
   # Secret scanning
   gitleaks:
     if: "!startsWith(github.ref, 'refs/tags/')"
-    uses: duyhenryer/shared-workflows/.github/workflows/gitleaks.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/gitleaks.yml@main
     continue-on-error: ${{ github.event_name != 'pull_request' }}
     permissions:
       contents: read
@@ -660,7 +660,7 @@ jobs:
   # SonarCloud analysis
   sonar:
     needs: [go-check, gitleaks]
-    uses: duyhenryer/shared-workflows/.github/workflows/sonarqube.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/sonarqube.yml@main
     with:
       project-key: my-org_my-project
       organization: my-org
@@ -671,7 +671,7 @@ jobs:
   notify:
     needs: [pr-checks, go-check, gitleaks, sonar]
     if: always()
-    uses: duyhenryer/shared-workflows/.github/workflows/status.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/status.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
       slack_thread_ts: ${{ needs.pr-checks.outputs.slack_thread_ts }}
@@ -701,7 +701,7 @@ permissions:
 jobs:
   # Step 1: Build, scan, and push (scan is integrated)
   build:
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
@@ -716,7 +716,7 @@ jobs:
   trivy-report:
     needs: [build]
     if: needs.build.outputs.scan-status == 'pass'
-    uses: duyhenryer/shared-workflows/.github/workflows/trivy-scan.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/trivy-scan.yml@main
     with:
       image-ref: ghcr.io/${{ github.repository }}/my-service@${{ needs.build.outputs.digest }}
       severity: 'CRITICAL,HIGH,MEDIUM'
@@ -731,7 +731,7 @@ jobs:
   # Step 3: Sign (auto-skipped if build fails due to scan)
   sign:
     needs: [build]
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-sign.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-sign.yml@main
     with:
       tags: ${{ needs.build.outputs.tags }}
       digest: ${{ needs.build.outputs.digest }}
@@ -744,7 +744,7 @@ jobs:
   notify:
     needs: [build, trivy-report, sign]
     if: always()
-    uses: duyhenryer/shared-workflows/.github/workflows/status.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/status.yml@main
     with:
       slack_channel_id: "C0AD82A9A74"
     secrets:
@@ -783,7 +783,7 @@ Set these in your repository settings (Settings → Secrets and variables → Ac
 
 ### How `pr-checks.yml` uses CODEOWNERS
 
-The `pr-checks.yml` workflow automatically extracts global code owners from the caller repo's CODEOWNERS file and tags them in the Slack PR notification (e.g. `cc @duyhenryer @duynebot`).
+The `pr-checks.yml` workflow automatically extracts global code owners from the caller repo's CODEOWNERS file and tags them in the Slack PR notification (e.g. `cc @duynhne @duynebot`).
 
 **Discovery order** (matches [GitHub's precedence](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners#codeowners-file-location)):
 
@@ -801,7 +801,7 @@ Each line is a **file pattern** followed by one or more **owners** (`@username` 
 
 ```gitignore
 # Global owners -- requested for review on every PR
-* @duyhenryer @duynebot
+* @duynhne @duynebot
 
 # Team-based ownership
 *.go        @duynhne/backend-team
@@ -811,10 +811,10 @@ Each line is a **file pattern** followed by one or more **owners** (`@username` 
 # Directory-specific
 /cmd/       @duynhne/backend-team
 /terraform/ @duynhne/infra-team
-/docs/      @duyhenryer
+/docs/      @duynhne
 
 # Protect the CODEOWNERS file itself
-/.github/CODEOWNERS @duyhenryer
+/.github/CODEOWNERS @duynhne
 ```
 
 ### Key rules
@@ -885,7 +885,7 @@ with:
 **Solution:** If you want to scan without blocking the push, set `scan-exit-code` to `'0'` in your `docker-build-go.yml` call:
 ```yaml
   build:
-    uses: duyhenryer/shared-workflows/.github/workflows/docker-build-go.yml@main
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
     with:
       image-name: my-service
       push: true
@@ -910,7 +910,7 @@ Or to skip scanning entirely, set `scan-before-push: false`.
 
 <div align="center">
 
-**Need help?** [Open an issue](https://github.com/duyhenryer/shared-workflows/issues)
+**Need help?** [Open an issue](https://github.com/duynhlab/gha-workflows/issues)
 
 [Back to Top](#workflow-usage-guide)
 
