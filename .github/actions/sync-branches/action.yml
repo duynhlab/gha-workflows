@@ -1,0 +1,122 @@
+name: 'Sync Branches'
+description: 'Automatically creates a Pull Request to sync code from a source branch to a target branch (e.g., backporting main to dev).'
+author: 'Duy Henry'
+inputs:
+  source_branch:
+    description: 'The branch to sync from (e.g., main)'
+    required: true
+  target_branch:
+    description: 'The branch to sync to (e.g., dev)'
+    required: true
+  github_token:
+    description: 'GitHub token for authenticating git operations and gh cli (needs repo and pull_request scopes)'
+    required: true
+  pr_title:
+    description: 'Title of the generated Pull Request'
+    required: false
+    default: 'chore: sync changes'
+  pr_body:
+    description: 'Body/Description of the Pull Request'
+    required: false
+    default: 'Automated Pull Request to sync changes.'
+  pr_labels:
+    description: 'Comma separated list of labels for the Pull Request'
+    required: false
+    default: 'auto-sync,backport'
+  auto_merge:
+    description: 'Enable auto-merge for the Pull Request (true/false)'
+    required: false
+    default: 'false'
+  merge_method:
+    description: 'Merge method if auto_merge is true (merge, squash, rebase)'
+    required: false
+    default: 'merge'
+
+outputs:
+  pull_request_url:
+    description: 'The URL of the created or updated Pull Request'
+    value: ${{ steps.sync.outputs.pr_url }}
+
+branding:
+  icon: git-merge
+  color: blue
+
+runs:
+  using: "composite"
+  steps:
+    - name: Configure Git User
+      shell: bash
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+    - name: Create Sync Pull Request
+      id: sync
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        SOURCE_BRANCH="${{ inputs.source_branch }}"
+        TARGET_BRANCH="${{ inputs.target_branch }}"
+        PR_TITLE="${{ inputs.pr_title }} (${SOURCE_BRANCH} -> ${TARGET_BRANCH})"
+        PR_BODY="${{ inputs.pr_body }}"
+        # Remove any spaces that user might have accidentally input in the comma separated list
+        PR_LABELS="$(echo "${{ inputs.pr_labels }}" | tr -d ' ')"
+        
+        echo "========================================="
+        echo "Syncing $SOURCE_BRANCH to $TARGET_BRANCH"
+        echo "========================================="
+
+        # Authenticate git remote with the provided token
+        git remote set-url origin "https://x-access-token:${{ inputs.github_token }}@github.com/${{ github.repository }}.git"
+
+        # Fetch the latest history for both branches
+        git fetch origin $SOURCE_BRANCH
+        git fetch origin $TARGET_BRANCH
+
+        # Check if source branch is ahead of target branch. 
+        # If COUNT is 0, target branch already has all commits from source branch.
+        COUNT=$(git rev-list origin/$TARGET_BRANCH..origin/$SOURCE_BRANCH --count)
+        if [ "$COUNT" -eq 0 ]; then
+          echo "No missing commits from $SOURCE_BRANCH in $TARGET_BRANCH. Everything is up to date."
+          exit 0
+        fi
+
+        echo "Found $COUNT commit(s) in $SOURCE_BRANCH that are not in $TARGET_BRANCH."
+
+        # Define a consistent sync branch name
+        SYNC_BRANCH="sync/${SOURCE_BRANCH}-to-${TARGET_BRANCH}"
+
+        echo "Creating/updating sync branch: $SYNC_BRANCH"
+        
+        # Checkout the source branch into the sync branch
+        git checkout -B $SYNC_BRANCH origin/$SOURCE_BRANCH
+
+        # Push the sync branch to remote, forcefully updating it if it already exists
+        git push -f origin $SYNC_BRANCH
+
+        # Check if a PR already exists for this branch pairing
+        PR_EXISTS_URL=$(gh pr list -B "$TARGET_BRANCH" -H "$SYNC_BRANCH" --state open --json url --jq '.[0].url')
+        PR_URL=""
+
+        if [ -z "$PR_EXISTS_URL" ] || [ "$PR_EXISTS_URL" = "null" ]; then
+          echo "Creating new Pull Request..."
+          PR_URL=$(gh pr create \
+            --base "$TARGET_BRANCH" \
+            --head "$SYNC_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --label "$PR_LABELS")
+          echo "Pull Request created successfully: $PR_URL"
+        else
+          echo "An open Pull Request already exists for $SYNC_BRANCH to $TARGET_BRANCH. Changes have been pushed to the branch."
+          PR_URL="$PR_EXISTS_URL"
+        fi
+
+        echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+
+        if [ "${{ inputs.auto_merge }}" = "true" ] && [ -n "$PR_URL" ]; then
+          echo "Enabling auto-merge for $PR_URL with method ${{ inputs.merge_method }}..."
+          # Using --auto so it waits for passing status checks if any are required
+          gh pr merge "$PR_URL" --auto --${{ inputs.merge_method }} || echo "Auto-merge could not be enabled immediately (maybe no checks are required, or lack of permissions). You may need to review it manually."
+        fi
