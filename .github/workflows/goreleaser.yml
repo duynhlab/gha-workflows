@@ -1,0 +1,86 @@
+name: GoReleaser Binary Release
+
+# Reusable workflow: builds a Go service's release binary with GoReleaser and
+# publishes it to a GitHub Release on a `v*` tag. The artifacts deliberately match
+# the duynhlab/packages build-local contract so packages can consume the release
+# instead of compiling from source:
+#   - <repo>-<version>-linux-amd64.tar.gz   (containing bin/<repo> + LICENSE/README)
+#   - <tarball>.sha256                       (per-file checksum)
+#   - build-info.env                         (SERVICE/VERSION/GIT_SHA/SCHEMA_VERSION/...)
+# The .goreleaser.yaml lives in the calling repo; this workflow generates
+# build-info.env (so the logic stays in one place) and runs GoReleaser.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version for the build'
+        required: false
+        type: string
+        default: '1.26'
+      goreleaser-version:
+        # NB: this constrains the GoReleaser *CLI* (v2), which is independent of the
+        # goreleaser-action major (v7) pinned in the Run step below — don't "align" them.
+        description: 'GoReleaser CLI version constraint (passed to goreleaser-action)'
+        required: false
+        type: string
+        default: '~> v2'
+
+permissions:
+  contents: write # create the GitHub Release + upload assets
+
+concurrency:
+  group: goreleaser-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # full history + tags for the changelog/version
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Generate build-info.env
+        shell: bash
+        # Mirrors packages/scripts/build-local.sh so packages can read the same
+        # sidecar. SCHEMA_VERSION = highest embedded migration (audit only).
+        run: |
+          set -euo pipefail
+          service="${GITHUB_REPOSITORY##*/}"; service="${service%-service}"
+          version="${GITHUB_REF_NAME#v}"
+          git_sha="$(git rev-parse --short HEAD)"
+          schema_version=0
+          if compgen -G "db/migrations/sql/*.up.sql" >/dev/null; then
+            schema_version="$(for f in db/migrations/sql/*.up.sql; do
+              basename "$f" | cut -d_ -f1
+            done | sed 's/^0*//' | sort -n | tail -1)"
+            schema_version="${schema_version:-0}"
+          fi
+          cat > build-info.env <<EOF
+          SERVICE=${service}
+          TYPE=backend
+          VERSION=${version}
+          GIT_SHA=${git_sha}
+          GOOS=linux
+          GOARCH=amd64
+          SCHEMA_VERSION=${schema_version}
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          SOURCE=github-release
+          EOF
+          echo "::group::build-info.env"; cat build-info.env; echo "::endgroup::"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        with:
+          version: ${{ inputs.goreleaser-version }}
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
