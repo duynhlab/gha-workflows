@@ -32,6 +32,7 @@ jobs:
 | **[docker-build-node.yml](.github/workflows/docker-build-node.yml)** | Docker build (Node) | **Scan-before-push**, multi-platform, caching, provenance, outputs `tags` + `digest` + `scan-status` |
 | **[trivy-scan.yml](.github/workflows/trivy-scan.yml)** | Image vulnerability report | Trivy post-push scan, SARIF, Google Sheets reporting |
 | **[docker-sign.yml](.github/workflows/docker-sign.yml)** | Cosign image signing | Keyless OIDC signing |
+| **[goreleaser.yml](.github/workflows/goreleaser.yml)** | Go binary release (on `v*` tags) | GoReleaser → GitHub Release; tarball + `.sha256` + `build-info.env` matching the `packages` contract |
 | **[sonarqube.yml](.github/workflows/sonarqube.yml)** | SonarCloud analysis | Go coverage, Quality Gate |
 | **[tf-lint.yml](.github/workflows/tf-lint.yml)** | Terraform validation | Format check, TFLint analysis |
 | **[status.yml](.github/workflows/status.yml)** | Build notifications | Slack, Google Sheets, job summaries |
