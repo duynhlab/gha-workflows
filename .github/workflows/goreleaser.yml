@@ -54,6 +54,10 @@ jobs:
         # sidecar. SCHEMA_VERSION = highest embedded migration (audit only).
         run: |
           set -euo pipefail
+          # Keep the generated sidecar out of git's view so GoReleaser's clean-state
+          # check doesn't abort on an untracked file (it's attached via extra_files,
+          # not committed). Local-only exclude — no tracked file is modified.
+          echo 'build-info.env' >> .git/info/exclude
           service="${GITHUB_REPOSITORY##*/}"; service="${service%-service}"
           version="${GITHUB_REF_NAME#v}"
           git_sha="$(git rev-parse --short HEAD)"
