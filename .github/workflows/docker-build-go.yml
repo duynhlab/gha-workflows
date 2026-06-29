@@ -134,13 +134,14 @@ jobs:
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
         with:
           images: ghcr.io/${{ github.repository }}/${{ inputs.image-name }}
+          # No mutable tags (no :latest, no :<branch>) — immutable per-commit
+          # :sha-<short> for branch builds; semver for releases.
+          # branch push -> :sha-<short>; PR -> :pr-<n>; tag v* -> :X.Y.Z + :X.Y.
           tags: |
-            type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
             ${{ inputs.tags }}
 
       # ── Build locally for scanning (--load, single platform) ──

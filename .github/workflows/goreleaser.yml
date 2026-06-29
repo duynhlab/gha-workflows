@@ -1,14 +1,14 @@
 name: GoReleaser Binary Release
 
 # Reusable workflow: builds a Go service's release binary with GoReleaser and
-# publishes it to a GitHub Release on a `v*` tag. The artifacts deliberately match
-# the duynhlab/packages build-local contract so packages can consume the release
-# instead of compiling from source:
+# publishes it to a GitHub Release on a `v*` tag. Artifacts follow the standard
+# GoReleaser supply-chain layout (as used by Kubernetes, cosign, Cilium, …):
 #   - <repo>-<version>-linux-amd64.tar.gz   (containing bin/<repo> + LICENSE/README)
-#   - <tarball>.sha256                       (per-file checksum)
-#   - build-info.env                         (SERVICE/VERSION/GIT_SHA/SCHEMA_VERSION/...)
-# The .goreleaser.yaml lives in the calling repo; this workflow generates
-# build-info.env (so the logic stays in one place) and runs GoReleaser.
+#   - checksums.txt                          (single combined checksum file)
+#   - checksums.txt.sig / checksums.txt.pem  (cosign keyless signature over the checksums)
+#   - SBOM(s)                                 (syft, per archive)
+# Version is derived from the git tag (+ ldflags -X main.version); there is no
+# build-info.env sidecar. The .goreleaser.yaml lives in the calling repo.
 
 on:
   workflow_call:
@@ -28,6 +28,7 @@ on:
 
 permissions:
   contents: write # create the GitHub Release + upload assets
+  id-token: write # cosign keyless (OIDC) signing of release artifacts
 
 concurrency:
   group: goreleaser-${{ github.ref }}
@@ -48,38 +49,10 @@ jobs:
           go-version: ${{ inputs.go-version }}
           cache: true
 
-      - name: Generate build-info.env
-        shell: bash
-        # Mirrors packages/scripts/build-local.sh so packages can read the same
-        # sidecar. SCHEMA_VERSION = highest embedded migration (audit only).
-        run: |
-          set -euo pipefail
-          # Keep the generated sidecar out of git's view so GoReleaser's clean-state
-          # check doesn't abort on an untracked file (it's attached via extra_files,
-          # not committed). Local-only exclude — no tracked file is modified.
-          echo 'build-info.env' >> .git/info/exclude
-          service="${GITHUB_REPOSITORY##*/}"; service="${service%-service}"
-          version="${GITHUB_REF_NAME#v}"
-          git_sha="$(git rev-parse --short HEAD)"
-          schema_version=0
-          if compgen -G "db/migrations/sql/*.up.sql" >/dev/null; then
-            schema_version="$(for f in db/migrations/sql/*.up.sql; do
-              basename "$f" | cut -d_ -f1
-            done | sed 's/^0*//' | sort -n | tail -1)"
-            schema_version="${schema_version:-0}"
-          fi
-          cat > build-info.env <<EOF
-          SERVICE=${service}
-          TYPE=backend
-          VERSION=${version}
-          GIT_SHA=${git_sha}
-          GOOS=linux
-          GOARCH=amd64
-          SCHEMA_VERSION=${schema_version}
-          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          SOURCE=github-release
-          EOF
-          echo "::group::build-info.env"; cat build-info.env; echo "::endgroup::"
+      # cosign must be on PATH for the `signs:` block in .goreleaser.yaml
+      # (keyless sign-blob over checksums.txt). Same installer as docker-sign.yml.
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
