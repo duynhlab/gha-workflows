@@ -45,6 +45,16 @@ on:
         type: boolean
         default: false
         description: Also test against stable Go version (non-blocking, for compatibility check)
+      integration:
+        required: false
+        type: boolean
+        default: false
+        description: Run integration tests (go test -tags=integration). Needs a Docker daemon (testcontainers); ubuntu-latest has one.
+      integration-command:
+        required: false
+        type: string
+        default: 'go test -tags=integration -covermode=atomic -coverprofile=coverage-integration.out ./...'
+        description: Command for the integration job. Must write coverage-integration.out (merged into SonarCloud coverage).
 
 
 jobs:
@@ -74,6 +84,33 @@ jobs:
         with:
           name: coverage-report
           path: coverage.out
+          retention-days: 1
+
+  integration:
+    name: Integration Test
+    if: ${{ inputs.integration }}
+    timeout-minutes: 30
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        if: ${{ inputs.setup-go }}
+        with:
+          go-version-file: ${{ inputs.gomod-path }}
+
+      # ubuntu-latest ships a running Docker daemon, so testcontainers works.
+      - name: Integration Test
+        run: ${{ inputs.integration-command }}
+
+      - name: Archive integration coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: success()
+        with:
+          name: coverage-integration-report
+          path: coverage-integration.out
           retention-days: 1
 
   test-stable:

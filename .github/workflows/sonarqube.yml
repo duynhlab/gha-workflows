@@ -36,6 +36,16 @@ on:
         required: false
         type: string
         default: 'coverage-report'
+      coverage-exclusions:
+        description: 'Paths excluded from the coverage % only (still analyzed for bugs/smells): bootstrap/wiring/migrations/mocks.'
+        required: false
+        type: string
+        default: '**/cmd/**,**/internal/core/database.go,**/db/migrations/**,**/mocks/**,**/*_mock.go'
+      integration-coverage:
+        description: 'Merge integration coverage (coverage-integration.out from go-check.yml integration job) into the SonarCloud report.'
+        required: false
+        type: boolean
+        default: false
       runs-on:
         description: 'Runner type'
         required: false
@@ -81,6 +91,24 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: .
 
+      - name: Download integration coverage report
+        if: inputs.integration-coverage
+        continue-on-error: true # absent if the integration job was skipped/failed
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # tag: v8.0.1
+        with:
+          name: coverage-integration-report
+          path: .
+
+      - name: Resolve coverage report paths
+        id: cov
+        run: |
+          paths="${{ inputs.coverage-path }}"
+          if [ -f coverage-integration.out ]; then
+            paths="${paths},coverage-integration.out"
+          fi
+          echo "paths=${paths}" >> "$GITHUB_OUTPUT"
+          echo "coverage reportPaths: ${paths}"
+
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # tag: v8.2.0
         with:
@@ -89,7 +117,8 @@ jobs:
             -Dsonar.organization=${{ inputs.organization }}
             -Dsonar.sources=${{ inputs.sources }}
             -Dsonar.exclusions=${{ inputs.exclusions }}
-            -Dsonar.go.coverage.reportPaths=${{ inputs.coverage-path }}
+            -Dsonar.coverage.exclusions=${{ inputs.coverage-exclusions }}
+            -Dsonar.go.coverage.reportPaths=${{ steps.cov.outputs.paths }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
