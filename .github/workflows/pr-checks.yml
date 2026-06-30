@@ -34,8 +34,8 @@ jobs:
         # Allow standard gitflow/trunk-based prefixes.
         # HEAD_REF is passed via env (not interpolated into the script) to avoid
         # shell injection from an attacker-controlled branch name.
-        if [[ ! "$HEAD_REF" =~ ^(feature|feat|fix|bugfix|hotfix|release|chore|docs|refactor|dependabot|ci|renovate|build)\/ ]]; then
-          echo "Error: Source branch '$HEAD_REF' does not match allowed patterns (feat/*, fix/*, chore/*, etc.)"
+        if [[ ! "$HEAD_REF" =~ ^(feature|feat|fix|bugfix|hotfix|release|chore|docs|refactor|test|perf|dependabot|ci|renovate|build)\/ ]]; then
+          echo "Error: Source branch '$HEAD_REF' does not match allowed patterns (feat/*, fix/*, test/*, chore/*, etc.)"
           echo "Create a new branch with a valid prefix and open a new PR."
           exit 1
         fi
