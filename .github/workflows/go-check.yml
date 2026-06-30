@@ -103,6 +103,12 @@ jobs:
 
       # ubuntu-latest ships a running Docker daemon, so testcontainers works.
       - name: Integration Test
+        # Disable the testcontainers Ryuk reaper on CI: the runner is ephemeral
+        # (no orphans to clean), and Ryuk's connect step intermittently hangs on
+        # GitHub runners — which timed out the whole job. Containers are still
+        # torn down by each test's t.Cleanup.
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
         run: ${{ inputs.integration-command }}
 
       - name: Archive integration coverage
