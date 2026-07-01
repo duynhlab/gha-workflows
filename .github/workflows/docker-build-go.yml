@@ -148,7 +148,7 @@ jobs:
       - name: Build image (local)
         id: build-local
         if: inputs.push && inputs.scan-before-push
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
@@ -261,7 +261,7 @@ jobs:
             !inputs.scan-before-push ||
             steps.scan-result.outputs.status == 'pass'
           )
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
@@ -281,7 +281,7 @@ jobs:
       - name: Build and push (no pre-scan)
         id: build-no-scan
         if: inputs.push && !inputs.scan-before-push
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
@@ -301,7 +301,7 @@ jobs:
       - name: Build image (no push)
         id: build-only
         if: '!inputs.push && !inputs.scan-before-push'
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
