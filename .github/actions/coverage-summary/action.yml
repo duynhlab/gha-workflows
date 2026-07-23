@@ -1,0 +1,110 @@
+name: Coverage Report Summary
+description: |
+  Parse Go coverage profile and write a job summary with total coverage
+  and per-package breakdown (collapsible), matching the gitleaks summary pattern.
+
+inputs:
+  coverage-file:
+    required: true
+    description: 'Path to Go coverage profile (.out file)'
+  title:
+    required: true
+    description: 'Summary heading, e.g. "Unit Test Coverage"'
+  artifact-name:
+    required: true
+    description: 'Name of the uploaded coverage artifact'
+
+outputs:
+  total-coverage:
+    description: 'Total statement coverage percentage (e.g. 72.5%)'
+    value: ${{ steps.summary.outputs.total-coverage }}
+
+runs:
+  using: composite
+  steps:
+    - name: Write coverage summary
+      id: summary
+      shell: bash
+      run: |
+        COVERAGE_FILE="${{ inputs.coverage-file }}"
+        TITLE="${{ inputs.title }}"
+        ARTIFACT="${{ inputs.artifact-name }}"
+
+        if [ ! -f "${COVERAGE_FILE}" ]; then
+          {
+            echo "### ${TITLE}"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| Report File | \`${COVERAGE_FILE}\` |"
+            echo "| Artifact | \`${ARTIFACT}\` |"
+            echo "| Status | **SKIPPED** (coverage file not found) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "total-coverage=unknown" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        COVER_FUNC=$(go tool cover -func="${COVERAGE_FILE}" 2>&1) || {
+          {
+            echo "### ${TITLE}"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| Report File | \`${COVERAGE_FILE}\` |"
+            echo "| Artifact | \`${ARTIFACT}\` |"
+            echo "| Status | **SKIPPED** (failed to parse coverage file) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "total-coverage=unknown" >> "$GITHUB_OUTPUT"
+          exit 0
+        }
+
+        TOTAL=$(echo "${COVER_FUNC}" | awk '/^total:/ { print $NF; exit }')
+        echo "total-coverage=${TOTAL:-unknown}" >> "$GITHUB_OUTPUT"
+
+        PACKAGE_TABLE=$(echo "${COVER_FUNC}" | awk '
+          /^total:/ { next }
+          {
+            cov = $NF
+            gsub(/%$/, "", cov)
+            n = split($1, parts, ":")
+            file = parts[1]
+            if (file ~ /\.go$/) {
+              idx = length(file)
+              while (idx > 0 && substr(file, idx, 1) != "/") idx--
+              if (idx > 0) file = substr(file, 1, idx - 1)
+              else file = "(root)"
+              sum[file] += cov
+              cnt[file]++
+            }
+          }
+          END {
+            for (p in sum) {
+              avg = sum[p] / cnt[p]
+              printf "%.1f\t%s\n", avg, p
+            }
+          }
+        ' | sort -t "$(printf '\t')" -k1,1n | awk -F "$(printf '\t')" '{ printf "| `%s` | **%s%%** |\n", $2, $1 }')
+
+        {
+          echo "### ${TITLE}"
+          echo ""
+          echo "| Property | Value |"
+          echo "|----------|-------|"
+          echo "| Total Coverage | **${TOTAL:-N/A}** |"
+          echo "| Report File | \`${COVERAGE_FILE}\` |"
+          echo "| Artifact | \`${ARTIFACT}\` |"
+          echo "| Status | **PASS** |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ -n "${PACKAGE_TABLE}" ]; then
+          {
+            echo ""
+            echo "<details><summary>Package Coverage</summary>"
+            echo ""
+            echo "| Package | Coverage |"
+            echo "|---------|----------|"
+            echo "${PACKAGE_TABLE}"
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi

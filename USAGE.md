@@ -50,7 +50,9 @@ jobs:
 
 **Purpose:** Go code quality assurance
 **Trigger:** PR events
-**Features:** Unit testing (with optional stable Go matrix), linting, coverage artifacts
+**Features:** Unit testing (with optional stable Go matrix), linting, coverage artifacts, coverage job summaries
+
+When tests produce a coverage profile (`coverage.out` / `coverage-integration.out`), the workflow writes a **job summary** (same pattern as Gitleaks) with total coverage and a collapsible per-package breakdown. Artifacts are still uploaded for SonarCloud.
 
 ### Inputs
 
