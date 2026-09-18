@@ -247,14 +247,18 @@ jobs:
       # policy change ships the way every other workflow change ships — a
       # Dependabot bump of the workflow ref. golangci-lint has no config
       # inheritance or remote include; a checked-out file passed by --config is
-      # the mechanism. github.workflow_sha is the called (reusable) workflow's
-      # commit here, which is exactly the pin.
+      # the mechanism. job.workflow_sha is "the commit SHA of the workflow file
+      # that defines the current job" — for a job defined in a reusable workflow,
+      # the reusable workflow file's commit, i.e. exactly the pin the caller chose.
+      # (github.workflow_sha is NOT that: inside a reusable workflow it resolves to
+      # the CALLER's commit, and the first rollout failed with `upload-pack: not
+      # our ref <caller sha>` on every service.)
       - name: Checkout fleet lint policy
         if: ${{ inputs.policy-lint }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: duynhlab/gha-workflows
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ job.workflow_sha }}
           path: .gha-policy
           sparse-checkout: .github/lint
           sparse-checkout-cone-mode: false
@@ -262,5 +266,5 @@ jobs:
         if: ${{ inputs.policy-lint }}
         continue-on-error: ${{ !inputs.policy-lint-blocking }}
         run: |
-          echo "::notice::fleet lint policy from duynhlab/gha-workflows@${{ github.workflow_sha }} (blocking: ${{ inputs.policy-lint-blocking }})"
+          echo "::notice::fleet lint policy from duynhlab/gha-workflows@${{ job.workflow_sha }} (blocking: ${{ inputs.policy-lint-blocking }})"
           golangci-lint run --timeout="${{ inputs.lint-timeout }}" --config=.gha-policy/.github/lint/golangci-policy.yml
