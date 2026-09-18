@@ -1,0 +1,10 @@
+# actionlint's context schema lags GitHub's contexts reference. `job.workflow_sha`
+# ("the commit SHA of the workflow file that defines the current job" — for a
+# reusable-workflow job, that workflow's own commit) is documented and live on
+# github.com but not yet in actionlint's `job` object type, so the two
+# expressions in go-check.yml's fleet-policy steps are ignored here. Remove
+# this once actionlint knows the property.
+paths:
+  .github/workflows/go-check.yml:
+    ignore:
+      - 'property "workflow_sha" is not defined in object type \{check_run_id'
