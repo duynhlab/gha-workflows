@@ -42,6 +42,23 @@ on:
         type: string
         default: 10m
         description: Indicate the timeout of golangci-lint. Default is 10 minutes
+      policy-lint:
+        required: false
+        type: boolean
+        default: false
+        description: >-
+          Also run the fleet lint policy (.github/lint/golangci-policy.yml from
+          this repository at the pinned SHA) as a second golangci-lint pass —
+          RFC-0031 / ADR-072 shared-package rule. The caller's own config is
+          untouched. Default is false.
+      policy-lint-blocking:
+        required: false
+        type: boolean
+        default: false
+        description: >-
+          Fail the Lint job on a policy finding. Default is false (findings are
+          reported, the job stays green) for the first release train of a
+          policy change; flip to true afterwards.
       lint-version:
         required: false
         type: string
@@ -224,3 +241,26 @@ jobs:
         run: |
           golangci-lint --version
           golangci-lint run --timeout="${{ inputs.lint-timeout }}" --config="${{ inputs.lint-path }}"
+
+      # Fleet lint policy (RFC-0031 / ADR-072): a second, additive pass with the
+      # policy file from THIS repository at the SHA the caller pinned, so a
+      # policy change ships the way every other workflow change ships — a
+      # Dependabot bump of the workflow ref. golangci-lint has no config
+      # inheritance or remote include; a checked-out file passed by --config is
+      # the mechanism. github.workflow_sha is the called (reusable) workflow's
+      # commit here, which is exactly the pin.
+      - name: Checkout fleet lint policy
+        if: ${{ inputs.policy-lint }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: duynhlab/gha-workflows
+          ref: ${{ github.workflow_sha }}
+          path: .gha-policy
+          sparse-checkout: .github/lint
+          sparse-checkout-cone-mode: false
+      - name: Fleet lint policy
+        if: ${{ inputs.policy-lint }}
+        continue-on-error: ${{ !inputs.policy-lint-blocking }}
+        run: |
+          echo "::notice::fleet lint policy from duynhlab/gha-workflows@${{ github.workflow_sha }} (blocking: ${{ inputs.policy-lint-blocking }})"
+          golangci-lint run --timeout="${{ inputs.lint-timeout }}" --config=.gha-policy/.github/lint/golangci-policy.yml
