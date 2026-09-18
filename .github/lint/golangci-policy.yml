@@ -1,0 +1,81 @@
+# Fleet lint policy — RFC-0031 / ADR-072, the shared-package rule.
+#
+# A service imports the shared package (github.com/duynhlab/pkg/*) and the
+# OpenTelemetry API; the SDK, every exporter, every bridge, every contrib
+# instrumentation and every backend client are linked in exactly one place,
+# pkg/obsx (transport instrumentation in pkg/httpmw and pkg/grpcx). A change to
+# how the fleet emits telemetry is a shared-package release followed by a
+# version bump, never an edit in a service.
+#
+# This file is the fleet-wide copy of the rule. go-check.yml runs it as a
+# SECOND, additive golangci-lint pass (`policy-lint: true`) with the caller's
+# own .golangci.yml untouched — golangci-lint has no config inheritance or
+# remote include, so a file checked out from this repository and passed by
+# path is the mechanism. The rules mirror pkg's own .golangci.yml
+# (otel-sdk-only-in-obsx) so a rule validated in the shared package is the one
+# the services are held to.
+#
+# If a rule rejects your import, the import is wrong — not the rule. Escalate
+# to a human before touching this file.
+#
+# Rollout: non-blocking (continue-on-error) for one release train while the
+# fleet moves onto obsx v0.39.0; then the caller flips policy-lint-blocking.
+# Tests are exempt everywhere: an in-memory reader or exporter is the correct
+# way to assert on telemetry.
+version: "2"
+run:
+  tests: true
+  relative-path-mode: gomod
+linters:
+  default: none
+  enable:
+    - depguard
+    - forbidigo
+  settings:
+    depguard:
+      rules:
+        # The OpenTelemetry SDK, exporters and bridges live in pkg/obsx.
+        # Since obsx v0.39.0 no exported obsx signature needs an SDK type, so
+        # there is no cmd/** exemption: main() imports obsx and the API only.
+        otel-sdk-only-in-obsx:
+          files: ["!$test"]
+          deny:
+            - pkg: go.opentelemetry.io/otel/sdk
+              desc: the OTel SDK is wired in pkg/obsx only; import the API (otel, otel/trace, otel/metric, otel/attribute, otel/codes), not the SDK
+            - pkg: go.opentelemetry.io/otel/exporters
+              desc: exporters are built in pkg/obsx only (OTLP/HTTP to the collector)
+            - pkg: go.opentelemetry.io/contrib/bridges
+              desc: log bridges are built in pkg/obsx (today) / pkg/logger/slogx (RFC-0031); a service never constructs one
+        # Transport instrumentation comes from the shared middleware, so every
+        # service emits the same spans and metrics with the same attributes.
+        # Known finding at rollout: payment-service wraps its outbound provider
+        # client and its webhook handler with otelhttp directly because the
+        # shared package has no HTTP-client helper yet — that is RFC-0031
+        # Phase 2 work (a helper in pkg), not a licence for a second service to
+        # do the same.
+        contrib-via-pkg:
+          files: ["!$test"]
+          deny:
+            - pkg: go.opentelemetry.io/contrib/instrumentation
+              desc: otelgin and otelgrpc are mounted by pkg/httpmw and pkg/grpcx; outbound HTTP instrumentation needs a shared helper (RFC-0031 Phase 2), not a direct otelhttp import
+        # Metrics go through the OTel Meter API and OTLP; the Prometheus client
+        # was retired at RFC-0014 P3 and profiling has exactly one lifecycle.
+        no-second-telemetry-client:
+          files: ["!$test"]
+          deny:
+            - pkg: github.com/prometheus/client_golang
+              desc: metrics use the OTel Meter API through pkg/obsx; client_golang was retired (RFC-0014 P3)
+            - pkg: github.com/grafana/pyroscope-go
+              desc: profiling starts through pkg/obsx.SetupProfiling only
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # Mutex and block profiling change process-global runtime sampling;
+        # pkg/obsx sets both, once, after the profiler started (RFC-0031
+        # profiling contract). A service that sets them changes every profile.
+        - pattern: ^runtime\.SetMutexProfileFraction$
+          msg: process-global profiler sampling is set by pkg/obsx.SetupProfiling only
+        - pattern: ^runtime\.SetBlockProfileRate$
+          msg: process-global profiler sampling is set by pkg/obsx.SetupProfiling only
+  exclusions:
+    generated: lax
