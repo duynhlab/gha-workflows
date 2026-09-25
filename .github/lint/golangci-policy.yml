@@ -19,7 +19,15 @@
 # to a human before touching this file.
 #
 # Rollout: non-blocking (continue-on-error) for one release train while the
-# fleet moves onto obsx v0.39.0; then the caller flips policy-lint-blocking.
+# fleet moved onto obsx v0.39.0 (2026-09-18); every service flipped
+# policy-lint-blocking on 2026-09-25 with the version floor below.
+#
+# VERSION FLOOR (ADR-072): a service more than one minor behind the shared
+# package's telemetry modules fails here. The floor is one minor behind the
+# current release of each module and moves with every shared-package release
+# — bump it in the same change that announces the release, and say so in the
+# release notes. Blocking a version blocks every import of that module until
+# the pin catches up, which is the point.
 # Tests are exempt everywhere: an in-memory reader or exporter is the correct
 # way to assert on telemetry.
 version: "2"
@@ -31,6 +39,7 @@ linters:
   enable:
     - depguard
     - forbidigo
+    - gomodguard_v2
   settings:
     depguard:
       rules:
@@ -48,16 +57,14 @@ linters:
               desc: log bridges are built in pkg/obsx (today) / pkg/logger/slogx (RFC-0031); a service never constructs one
         # Transport instrumentation comes from the shared middleware, so every
         # service emits the same spans and metrics with the same attributes.
-        # Known finding at rollout: payment-service wraps its outbound provider
-        # client and its webhook handler with otelhttp directly because the
-        # shared package has no HTTP-client helper yet — that is RFC-0031
-        # Phase 2 work (a helper in pkg), not a licence for a second service to
-        # do the same.
+        # payment-service used to wrap its provider client and webhook handler
+        # with otelhttp directly; httpmw v0.3.0 added Transport and Handler for
+        # exactly that, so the rule has no exemption.
         contrib-via-pkg:
           files: ["!$test"]
           deny:
             - pkg: go.opentelemetry.io/contrib/instrumentation
-              desc: otelgin and otelgrpc are mounted by pkg/httpmw and pkg/grpcx; outbound HTTP instrumentation needs a shared helper (RFC-0031 Phase 2), not a direct otelhttp import
+              desc: otelgin and otelgrpc are mounted by pkg/httpmw and pkg/grpcx; a plain net/http client or handler takes httpmw.Transport / httpmw.Handler (v0.3.0), never otelhttp directly
         # Metrics go through the OTel Meter API and OTLP; the Prometheus client
         # was retired at RFC-0014 P3 and profiling has exactly one lifecycle.
         no-second-telemetry-client:
@@ -67,6 +74,25 @@ linters:
               desc: metrics use the OTel Meter API through pkg/obsx; client_golang was retired (RFC-0014 P3)
             - pkg: github.com/grafana/pyroscope-go
               desc: profiling starts through pkg/obsx.SetupProfiling only
+    gomodguard_v2:
+      blocked:
+        # Floors as of 2026-09-25: obsx v0.47.0, logger/slogx v0.3.0,
+        # httpmw v0.3.0, grpcx v0.37.0, temporalx v0.44.0.
+        - module: github.com/duynhlab/pkg/obsx
+          version: "< 0.46.0"
+          reason: "ADR-072 version floor: obsx is more than one minor behind v0.47.0"
+        - module: github.com/duynhlab/pkg/logger/slogx
+          version: "< 0.2.0"
+          reason: "ADR-072 version floor: logger/slogx is more than one minor behind v0.3.0"
+        - module: github.com/duynhlab/pkg/httpmw
+          version: "< 0.2.0"
+          reason: "ADR-072 version floor: httpmw is more than one minor behind v0.3.0"
+        - module: github.com/duynhlab/pkg/grpcx
+          version: "< 0.36.0"
+          reason: "ADR-072 version floor: grpcx is more than one minor behind v0.37.0"
+        - module: github.com/duynhlab/pkg/temporalx
+          version: "< 0.43.0"
+          reason: "ADR-072 version floor: temporalx is more than one minor behind v0.44.0"
     forbidigo:
       analyze-types: true
       forbid:
