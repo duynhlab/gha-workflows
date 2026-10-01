@@ -184,7 +184,7 @@ jobs:
       # --- Google Sheets Reporting ---
       - name: Append workflow status to Google Sheet
         if: ${{ always() && inputs.gsheet_spreadsheet_id != '' }}
-        uses: jroehl/gsheet.action@ec5aa4154b217321530a31d5b2555e107b2e2b48 # v2.1.1
+        uses: jroehl/gsheet.action@3268a9808fdae0f3c22342268343e5fdb746068c # v3.1.0
         with:
           spreadsheetId: ${{ inputs.gsheet_spreadsheet_id }}
           commands: |
@@ -204,7 +204,7 @@ jobs:
 
       - name: Append jobs status to Google Sheet
         if: ${{ always() && inputs.gsheet_spreadsheet_id != '' }}
-        uses: jroehl/gsheet.action@ec5aa4154b217321530a31d5b2555e107b2e2b48 # v2.1.1
+        uses: jroehl/gsheet.action@3268a9808fdae0f3c22342268343e5fdb746068c # v3.1.0
         with:
           spreadsheetId: ${{ inputs.gsheet_spreadsheet_id }}
           commands: |
