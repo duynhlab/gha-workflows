@@ -62,7 +62,7 @@ on:
       lint-version:
         required: false
         type: string
-        default: "v2.12.2"
+        default: "v2.14.0"
         description: >-
           Fallback golangci-lint version, used only when the caller has no
           tools/go.mod. Prefer pinning the linter there so Dependabot keeps it
