@@ -14,10 +14,15 @@ on:
   workflow_call:
     inputs:
       go-version:
-        description: 'Go version for the build'
+        description: 'Go version override; empty reads the go directive from go-version-file'
         required: false
         type: string
-        default: '1.26'
+        default: ''
+      go-version-file:
+        description: 'go.mod that sets the Go version when go-version is empty'
+        required: false
+        type: string
+        default: 'go.mod'
       goreleaser-version:
         # NB: this constrains the GoReleaser *CLI* (v2), which is independent of the
         # goreleaser-action major (v7) pinned in the Run step below — don't "align" them.
@@ -47,6 +52,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ inputs.go-version }}
+          go-version-file: ${{ inputs.go-version-file }}
           cache: true
 
       # cosign must be on PATH for the `signs:` block in .goreleaser.yaml
