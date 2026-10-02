@@ -21,11 +21,6 @@ on:
         required: false
         type: string
         default: '**/vendor/**,**/node_modules/**,**/*_test.go,**/testdata/**'
-      go-version:
-        description: 'Go version to use'
-        required: false
-        type: string
-        default: '1.25'
       coverage-path:
         description: 'Path to Go coverage file'
         required: false

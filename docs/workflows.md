@@ -735,7 +735,8 @@ Published artifacts follow the standard GoReleaser supply-chain layout:
 
 | Parameter | Type | Default | Required | Description |
 |-----------|------|---------|----------|-------------|
-| `go-version` | string | `"1.26"` | No | Go version for the build |
+| `go-version` | string | `""` | No | Go version override; empty reads the `go` directive from `go-version-file` |
+| `go-version-file` | string | `"go.mod"` | No | `go.mod` that sets the Go version when `go-version` is empty, so the release binary uses the toolchain CI tested |
 | `goreleaser-version` | string | `"~> v2"` | No | GoReleaser **CLI** version constraint |
 
 > `goreleaser-version` constrains the GoReleaser CLI (v2), which is independent of the `goreleaser-action` major pinned inside the workflow. Do not try to "align" the two numbers.
@@ -782,7 +783,6 @@ jobs:
 | `sources` | string | `"."` | No | Comma-separated source directories |
 | `exclusions` | string | `"**/vendor/**,**/node_modules/**,**/*_test.go,**/testdata/**"` | No | Patterns excluded from analysis entirely |
 | `coverage-exclusions` | string | *(see below)* | No | Paths excluded from the **coverage % only** — still analyzed for bugs and smells |
-| `go-version` | string | `"1.25"` | No | Go version to use |
 | `coverage-path` | string | `"coverage.out"` | No | Path to Go coverage file |
 | `artifact-name` | string | `"coverage-report"` | No | Artifact name containing the coverage report |
 | `integration-coverage` | boolean | `false` | No | Merge `coverage-integration.out` from `go-check.yml`'s integration job into the report |
