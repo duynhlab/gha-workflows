@@ -500,7 +500,7 @@ jobs:
 | `image-name` | string | - | **Yes** | Docker image name (without registry prefix) |
 | `dockerfile` | string | `"Dockerfile"` | No | Path to Dockerfile |
 | `context` | string | `"."` | No | Docker build context |
-| `push` | boolean | `false` | No | Push image to registry |
+| `push` | boolean | `false` | No | Push image to registry. `false` builds every platform without scanning or pushing (Dockerfile verification, e.g. on pull requests) |
 | `platforms` | string | `"linux/amd64,linux/arm64"` | No | Target platforms of the pushed index |
 | `build-args` | string | `""` | No | Build-time variables |
 | `tags` | string | `""` | No | Custom tags (comma-separated); empty = default tagging |
@@ -566,6 +566,19 @@ jobs:
       contents: read
       packages: write
       actions: read
+```
+
+**Build only (pull request, nothing pushed):**
+```yaml
+jobs:
+  build:
+    uses: duynhlab/gha-workflows/.github/workflows/docker-build-go.yml@main
+    with:
+      image-name: my-service
+      push: false   # builds all platforms; no scan, no push
+    permissions:
+      contents: read
+      packages: read   # pull the registry build cache
 ```
 
 > `--load` (used for local scanning) only supports single-platform builds, so the Trivy gate exercises the **runner's** architecture only — amd64 on `ubuntu-latest`. The default `platforms` is multi-arch, so the arm64 layers of the pushed index go out unscanned; the gate blocks the push on an amd64 finding, and an arm64-only regression would not be caught. Pass `platforms: linux/amd64` if you need the scanned artifact to be the whole pushed artifact.
