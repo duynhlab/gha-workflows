@@ -182,6 +182,10 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: ${{ inputs.severity }}
+          # Without this the SARIF output carries every severity regardless of
+          # `severity`, so the Security tab fills with LOW/MEDIUM the scan was
+          # told to ignore.
+          limit-severities-for-sarif: true
           exit-code: '0'
           ignore-unfixed: ${{ inputs.ignore-unfixed }}
           scanners: ${{ inputs.scanners }}
