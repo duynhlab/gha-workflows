@@ -105,8 +105,12 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     uses: duynhlab/gha-workflows/.github/workflows/goreleaser.yml@main
     secrets: inherit
+    # Permissions only shrink down a reusable-workflow call: goreleaser.yml
+    # declares id-token: write for cosign keyless signing, but it only gets it
+    # if the caller grants it here.
     permissions:
       contents: write
+      id-token: write
 
   notify:
     needs:
