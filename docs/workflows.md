@@ -663,7 +663,7 @@ jobs:
 | Parameter | Type | Default | Required | Description |
 |-----------|------|---------|----------|-------------|
 | `image-ref` | string | - | **Yes** | Full image reference (e.g. `ghcr.io/org/app@sha256:...`) |
-| `severity` | string | `"CRITICAL,HIGH"` | No | Comma-separated severity levels to scan |
+| `severity` | string | `"CRITICAL,HIGH"` | No | Comma-separated severity levels to scan. Also limits what the SARIF upload sends to the Security tab |
 | `exit-code` | string | `"1"` | No | `0` = warn only, `1` = fail on vulnerabilities |
 | `ignore-unfixed` | boolean | `true` | No | Skip vulnerabilities without an available fix |
 | `scanners` | string | `"vuln"` | No | What to scan (`vuln`, `secret`, `misconfig`) |
