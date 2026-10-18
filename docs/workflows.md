@@ -622,6 +622,8 @@ jobs:
 
 > Chain after any builder that outputs `tags` and `digest`. Because the builder only pushes images that pass the scan, a failed scan means `docker-sign` is skipped automatically.
 
+> **Signature format.** The workflow runs cosign 3.x but signs with `--new-bundle-format=false`, so the signature is stored the cosign 2 way (a `<digest>.sig` tag next to the image). cosign 3 would otherwise write a Sigstore bundle through OCI 1.1 referrers, which cosign 2 clients and policy-controller with the default `signatureFormat: legacy` cannot find. Moving to the bundle format is a verifier-side change (policy-controller `signatureFormat: bundle`, or the equivalent in Kyverno / Flux) and is done separately.
+
 ### Inputs
 
 | Parameter | Type | Default | Required | Description |
