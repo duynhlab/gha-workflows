@@ -40,13 +40,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # cosign-installer v4 installs cosign 3.x, which by default writes the
-      # signature as a Sigstore bundle attached through OCI 1.1 referrers
-      # instead of the <digest>.sig tag. cosign 2.x clients and
-      # sigstore/policy-controller (signatureFormat defaults to "legacy") do
-      # not find bundle-format signatures. Keep the legacy format until the
-      # verifier on the cluster is confirmed to read the new one; then drop
-      # the flag in a change of its own. Decided 2026-10-15 (review item A3).
       - name: Sign image with Cosign
         env:
           DIGEST: ${{ inputs.digest }}
@@ -56,4 +49,4 @@ jobs:
           for tag in ${TAGS}; do
             images+="${tag}@${DIGEST} "
           done
-          cosign sign --yes --new-bundle-format=false ${images}
+          cosign sign --yes ${images}
