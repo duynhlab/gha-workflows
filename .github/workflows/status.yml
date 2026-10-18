@@ -32,6 +32,16 @@ on:
         type: string
         required: false
         default: ""
+      allowed-failed-jobs:
+        description: |
+          Job names, one per line, whose failure does not change the overall
+          status. Use the full name GitHub reports, "<caller-job-id> / <job name>",
+          e.g. "go-check / Test (stable)" for go-check.yml's non-blocking stable-Go
+          job. The reusable workflow cannot know the caller's job id, so the
+          caller passes it.
+        type: string
+        required: false
+        default: ""
     secrets:
       SLACK_BOT_TOKEN:
         description: "Slack bot token for notifications"
@@ -54,6 +64,10 @@ jobs:
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         id: fetch-workflow-status
+        env:
+          # Read through env, not interpolated into the script, so a job name
+          # with quotes or backslashes cannot break the JavaScript.
+          ALLOWED_FAILED_JOBS: ${{ inputs.allowed-failed-jobs }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -72,9 +86,10 @@ jobs:
               run_id: context.runId
             });
             
-            const allowedFailedJobs = [
-              "unit-tests / unit-tests (stable)",
-            ]
+            // From the allowed-failed-jobs input: full job names as GitHub
+            // reports them ("<caller-job-id> / <job name>"), one per line.
+            const allowedFailedJobs = (process.env.ALLOWED_FAILED_JOBS || '')
+              .split('\n').map(s => s.trim()).filter(Boolean);
             
             // Get failed jobs count, excluding allowed failed jobs
             const failedJobsCount = jobs.data.jobs.filter(job => job.status === "completed" && job.conclusion === "failure" && !allowedFailedJobs.includes(job.name)).length;

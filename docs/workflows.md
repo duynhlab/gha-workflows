@@ -102,6 +102,7 @@ jobs:
 | `slack_channel_id` | string | `""` | No | Slack channel ID for notifications |
 | `slack_thread_ts` | string | `""` | No | Slack thread timestamp (from `pr-checks.yml` output) for reply threading |
 | `gsheet_spreadsheet_id` | string | `""` | No | Google Sheet spreadsheet ID for CI reporting |
+| `allowed-failed-jobs` | string | `""` | No | Job names (one per line, full `<caller-job-id> / <job name>` form) whose failure does not change the overall status, e.g. `go-check / Test (stable)` |
 
 ### Secrets
 
@@ -195,7 +196,7 @@ go test -tags=integration -covermode=atomic -coverprofile=coverage-integration.o
 |-----|-----------|-------|
 | `Test` | Always | The check to require in the ruleset |
 | `Integration Test` | `integration: true` | Sets `TESTCONTAINERS_RYUK_DISABLED=true` — the Ryuk reaper intermittently hangs on GitHub runners, and the runner is ephemeral anyway |
-| `Test (stable)` | `test-stable: true` | `continue-on-error` — compatibility signal only |
+| `Test (stable)` | `test-stable: true` | `continue-on-error` — compatibility signal only. Pass `allowed-failed-jobs: '<job-id> / Test (stable)'` to `status.yml` so a stable-Go failure does not turn the Slack/Sheets status red |
 | `Lint` | `lint: true` **and** event is `pull_request` | Does **not** run on `push`, so `main` is never linted — a PR merged with Lint red leaves those findings unreported |
 
 ### Pinning the linter
