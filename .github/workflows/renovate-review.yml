@@ -181,6 +181,14 @@ jobs:
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
+      # Custom agents are discovered from .github/agents of the working
+      # directory, i.e. the caller checkout; the toolkit's agent is copied in
+      # for this job only (the checkout is never pushed).
+      - name: Install the review agent
+        run: |
+          mkdir -p .github/agents
+          cp .renovate-review/.github/renovate-review/agents/renovate-reviewer.agent.md .github/agents/
+
       - name: Fetch PR inputs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -220,7 +228,8 @@ jobs:
           if [ -n "${COPILOT_MODEL:-}" ]; then model_args=(--model "$COPILOT_MODEL"); fi
           # Deny rules win over --allow-all-tools: no PR writes, no API calls,
           # no pushes, no outbound fetches from the job that reads untrusted text.
-          copilot -p "$(cat .renovate-review/.github/renovate-review/prompt.md)" \
+          copilot --agent renovate-reviewer \
+            -p "$(cat .renovate-review/.github/renovate-review/prompt.md)" \
             --allow-all-tools \
             --deny-tool='shell(gh pr)' \
             --deny-tool='shell(gh api)' \
@@ -245,7 +254,7 @@ jobs:
           set -euo pipefail
           if node "$TOOLKIT/post.mjs" .review/review.json --check; then exit 0; fi
           errors=$(node "$TOOLKIT/post.mjs" .review/review.json --check 2>&1 || true)
-          copilot -p "Fix .review/review.json so it satisfies $TOOLKIT/schema.json. Validator output:
+          copilot --agent renovate-reviewer -p "Fix .review/review.json so it satisfies $TOOLKIT/schema.json. Validator output:
           $errors
           Keep every finding; only correct structure, enums and required keys. Write only .review/review.json." \
             --allow-all-tools \

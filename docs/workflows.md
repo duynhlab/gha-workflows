@@ -544,7 +544,7 @@ jobs:
       COPILOT_PAT: ${{ secrets.COPILOT_PAT }}
 ```
 
-The toolkit (`prompt.md`, `schema.json`, `select.mjs`, `post.mjs`) lives in [`.github/renovate-review/`](../.github/renovate-review/) and is checked out at `job.workflow_sha`, so a caller pinned to a SHA never drifts. Bump `PROMPT_VERSION` in the prompt when the questions change and `schema_version` only when the JSON shape changes incompatibly.
+The toolkit (`agents/renovate-reviewer.agent.md` — the Copilot custom agent that does the reading, `prompt.md` — the short per-run task, `schema.json`, `select.mjs`, `post.mjs`) lives in [`.github/renovate-review/`](../.github/renovate-review/) and is checked out at `job.workflow_sha`, so a caller pinned to a SHA never drifts. Bump `PROMPT_VERSION` in the prompt when the questions change and `schema_version` only when the JSON shape changes incompatibly.
 
 ---
 
