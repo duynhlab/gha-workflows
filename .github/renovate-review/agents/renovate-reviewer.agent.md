@@ -1,7 +1,8 @@
 ---
 name: renovate-reviewer
 description: Reads the release notes of one Renovate pull request against the checked-out repository and writes a schema-validated review to .review/review.json. Never posts, never edits tracked files.
-tools: ["view", "grep", "glob", "shell", "edit", "create"]
+# Tool restriction is enforced by the workflow's --deny-tool list, not here:
+# an unknown tool name in this list would be a parse error in a headless run.
 reasoningEffort: high
 include-custom-instructions: false
 ---
