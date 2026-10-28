@@ -9,6 +9,7 @@ this repository.
 | [go-service-check.yml](go-service-check.yml) | `.github/workflows/check.yml` | `pull_request` |
 | [go-service-build.yml](go-service-build.yml) | `.github/workflows/build.yml` | `push` to `main`, `v*` tags |
 | [go-service-security-scheduled.yml](go-service-security-scheduled.yml) | `.github/workflows/security-scheduled.yml` | weekly `schedule` + `workflow_dispatch` |
+| [delete-workflow-runs.yml](delete-workflow-runs.yml) | `.github/workflows/delete-workflow-runs.yml` | manual `workflow_dispatch` |
 
 Before copying, replace: `project-key`, `organization`, `image-name`, and `slack_channel_id`.
 

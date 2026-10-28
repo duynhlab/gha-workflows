@@ -39,6 +39,7 @@ the intent really is to freeze consumers on a release line.
 | [Release](#release) | `goreleaser` |
 | [Code quality](#code-quality) | `sonarqube` |
 | [Infrastructure](#infrastructure) | `tf-lint` |
+| [Housekeeping](#housekeeping) | `delete-workflow-runs` |
 
 ---
 
@@ -866,4 +867,49 @@ jobs:
     uses: duynhlab/gha-workflows/.github/workflows/tf-lint.yml@main
     with:
       tflint_minimum_failure_severity: 'error'
+```
+
+---
+
+# Housekeeping
+
+## delete-workflow-runs.yml
+
+**Purpose:** Delete finished Actions runs in the calling repository
+**Trigger:** `workflow_dispatch`, or `workflow_call` from a caller you run by hand
+**Features:** Retain window, dry run, skips the run that is executing this workflow
+
+GitHub has no bulk-delete API. The workflow lists runs, then sends one DELETE per run.
+Runs that are still queued or in progress are left alone. `dry_run` defaults to `true`,
+so the first run only prints what it would delete.
+
+`retain_days: 0` deletes every finished run. The default is 30 days.
+
+The caller must grant `actions: write`. No secrets are required — the job uses
+`GITHUB_TOKEN`.
+
+### Inputs
+
+| Parameter | Type | Default | Required | Description |
+|-----------|------|---------|----------|-------------|
+| `retain_days` | number | `30` | No | Delete finished runs older than this many days. `0` deletes every finished run |
+| `dry_run` | boolean | `true` | No | Log matching runs and do not delete them |
+
+### Usage
+
+Run it from this repository's Actions tab to clean **this** repository.
+
+To clean a service repository, copy [examples/delete-workflow-runs.yml](../examples/delete-workflow-runs.yml)
+and run that workflow by hand:
+
+```yaml
+jobs:
+  delete-runs:
+    uses: duynhlab/gha-workflows/.github/workflows/delete-workflow-runs.yml@main
+    with:
+      retain_days: 30
+      dry_run: false
+    permissions:
+      actions: write
+      contents: read
 ```
