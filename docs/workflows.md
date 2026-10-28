@@ -516,6 +516,7 @@ jobs:
 | `first-party-prefix` | string | `""` | No | Dependency-name prefix to skip (own images); empty skips nothing |
 | `model` | string | `""` | No | Copilot `--model`; empty uses the CLI default |
 | `node-version` | string | `"26"` | No | Node.js for the scripts and the Copilot CLI |
+| `ref` | string | `""` | No | Ref of the caller repository the AI reads; empty = default branch. Only set it from a `workflow_dispatch` on a trial branch (`${{ github.ref_name }}`); `pull_request` events must leave it empty |
 
 ### Secrets
 
