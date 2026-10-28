@@ -8,3 +8,6 @@ paths:
   .github/workflows/go-check.yml:
     ignore:
       - 'property "workflow_sha" is not defined in object type \{check_run_id'
+  .github/workflows/renovate-review.yml:
+    ignore:
+      - 'property "workflow_sha" is not defined in object type \{check_run_id'

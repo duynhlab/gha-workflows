@@ -10,6 +10,7 @@ this repository.
 | [go-service-build.yml](go-service-build.yml) | `.github/workflows/build.yml` | `push` to `main`, `v*` tags |
 | [go-service-security-scheduled.yml](go-service-security-scheduled.yml) | `.github/workflows/security-scheduled.yml` | weekly `schedule` + `workflow_dispatch` |
 | [delete-workflow-runs.yml](delete-workflow-runs.yml) | `.github/workflows/delete-workflow-runs.yml` | manual `workflow_dispatch` |
+| [renovate-review.yml](renovate-review.yml) | `.github/workflows/renovate-review.yml` | `pull_request` from Renovate + manual backfill |
 
 Before copying, replace: `project-key`, `organization`, `image-name`, and `slack_channel_id`.
 

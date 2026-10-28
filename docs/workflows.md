@@ -35,6 +35,7 @@ the intent really is to freeze consumers on a release line.
 | [PR & notification](#pr--notification) | `pr-checks`, `status` |
 | [Go](#go) | `go-check` |
 | [Security](#security) | `gitleaks`, `go-security`, `codeql`, `govulncheck`, `dependency-review` |
+| [Dependencies](#dependencies) | `renovate-review` |
 | [Container images](#container-images) | `docker-build-go`, `docker-build-node`, `docker-sign`, `trivy-scan` |
 | [Release](#release) | `goreleaser` |
 | [Code quality](#code-quality) | `sonarqube` |
@@ -488,6 +489,61 @@ jobs:
     permissions:
       contents: read
 ```
+
+---
+
+# Dependencies
+
+## renovate-review.yml
+
+**Purpose:** Have an AI read the release notes of a Renovate pull request against the caller repository and leave one structured comment (verdict, relevant breaking changes, affected files, verification checklist, sibling PRs) plus `impact/none|minor|breaking` and `ai/needs-verification` labels. Nothing merges.
+**Trigger:** the caller's `pull_request` (`opened`, `synchronize`, `reopened`, guarded on `renovate[bot]`) and `workflow_dispatch` for backfills
+**Features:** three jobs with separate permissions — the AI job (GitHub Copilot CLI, `--allow-all-tools`) has `contents: read` only, checks out the default branch, holds a Copilot-only token and is denied `gh pr`, `gh api`, `gh issue`, `git push`, `curl`, `wget`; the post job is the only one with `pull-requests: write` and refuses any `review.json` that fails `.github/renovate-review/schema.json`. The comment's first line is `<!-- dep-radar:v1 {json} -->`, the contract that `duynhlab/dep-radar` mirrors.
+
+> **Prerequisites:** repository secret `COPILOT_PAT` (fine-grained PAT, *Copilot Requests* + public-repository read, **no write scopes**); the four labels declared in the caller repository; an owner-authored rules file the prompt treats as authoritative. Start with `dry-run: true` and read the job log before enabling the write side.
+
+### Inputs
+
+| Parameter | Type | Default | Required | Description |
+|-----------|------|---------|----------|-------------|
+| `runs-on` | string | `"ubuntu-latest"` | No | Runner type |
+| `rules-file` | string | - | **Yes** | Path in the caller repository of the review rules (repository description, pins by decision, known false positives, PR families, always-verify checks) |
+| `pr` | string | `""` | No | PR number or `all`; empty on `pull_request` events (the event's PR is used) |
+| `max` | string | `"10"` | No | Maximum PRs per run (backfills) |
+| `force` | boolean | `false` | No | Re-review even if the current head SHA already has a review |
+| `dry-run` | boolean | `true` | No | Print the comment and label plan instead of posting |
+| `bot-login` | string | `"renovate[bot]"` | No | API login of the Renovate app |
+| `first-party-prefix` | string | `""` | No | Dependency-name prefix to skip (own images); empty skips nothing |
+| `model` | string | `""` | No | Copilot `--model`; empty uses the CLI default |
+| `node-version` | string | `"26"` | No | Node.js for the scripts and the Copilot CLI |
+
+### Secrets
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `COPILOT_PAT` | **Yes** | Fine-grained PAT with *Copilot Requests*; never `contents` or `pull-requests` write |
+
+### Usage
+
+Complete caller: [examples/renovate-review.yml](../examples/renovate-review.yml).
+
+```yaml
+jobs:
+  review:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.user.login == 'renovate[bot]'
+    uses: duynhlab/gha-workflows/.github/workflows/renovate-review.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      rules-file: docs/platform/renovate-review.md
+      first-party-prefix: ghcr.io/my-org/
+      dry-run: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == true }}
+    secrets:
+      COPILOT_PAT: ${{ secrets.COPILOT_PAT }}
+```
+
+The toolkit (`prompt.md`, `schema.json`, `select.mjs`, `post.mjs`) lives in [`.github/renovate-review/`](../.github/renovate-review/) and is checked out at `job.workflow_sha`, so a caller pinned to a SHA never drifts. Bump `PROMPT_VERSION` in the prompt when the questions change and `schema_version` only when the JSON shape changes incompatibly.
 
 ---
 

@@ -1,0 +1,304 @@
+name: Renovate Review
+
+# Reusable workflow: an AI reads the release notes of a Renovate pull request
+# against the caller repository and leaves one structured comment plus
+# impact/* labels. Nothing merges; the owner still decides.
+#
+# Three jobs with separate permissions on purpose. The job that runs the AI
+# (GitHub Copilot CLI with --allow-all-tools) reads third-party text, so it has
+# contents: read only, checks out the default branch (never the PR head), holds
+# a Copilot-only token and is denied `gh pr`, `gh api`, `gh issue`, `git push`,
+# `curl` and `wget`. The only thing it can produce is .review/review.json. The
+# post job is the only one with pull-requests: write; it runs no AI and refuses
+# any file that fails the schema or the invariants in post.mjs.
+#
+# The prompt, schema and scripts live in .github/renovate-review/ of this
+# repository and are checked out at job.workflow_sha — the exact pin the
+# caller chose — so a consumer pinned to a SHA never drifts.
+#
+# Caller contract:
+#   - trigger on pull_request (opened, synchronize, reopened) and
+#     workflow_dispatch; guard the job with
+#     `github.event.pull_request.user.login == 'renovate[bot]'` for PR events
+#   - grant the job `contents: read` + `pull-requests: write`
+#   - pass the owner-authored rules file (the prompt treats it as authoritative)
+#   - declare the four labels (impact/none|minor|breaking, ai/needs-verification)
+#   - provide COPILOT_PAT: a fine-grained PAT with the Copilot Requests
+#     permission and public-repository read; no write scopes
+#
+# The comment's first line is `<!-- dep-radar:v1 {json} -->`; the JSON is the
+# review contract (schema.json) that duynhlab/dep-radar mirrors.
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: 'Runner type'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      rules-file:
+        description: |
+          Path (in the caller repository) of the owner-authored review rules. Read
+          by the prompt as authoritative: repository description, pins decided by
+          design records, known false positives, families of PRs, always-verify
+          checks.
+        required: true
+        type: string
+      pr:
+        description: |
+          PR number, or "all" for every open Renovate PR. Leave empty on
+          pull_request events (the event's PR is used).
+        required: false
+        type: string
+        default: ''
+      max:
+        description: 'Maximum PRs to review in one run (backfills)'
+        required: false
+        type: string
+        default: '10'
+      force:
+        description: 'Re-review even if the current head SHA already has a review'
+        required: false
+        type: boolean
+        default: false
+      dry-run:
+        description: 'Print the comment and label plan in the job log instead of posting'
+        required: false
+        type: boolean
+        default: true
+      bot-login:
+        description: 'Login of the Renovate app in the API (renovate[bot] for the hosted app)'
+        required: false
+        type: string
+        default: 'renovate[bot]'
+      first-party-prefix:
+        description: |
+          Dependency-name prefix to skip, for images the organisation builds
+          itself (they have their own changelog and CI). Empty skips nothing.
+        required: false
+        type: string
+        default: ''
+      model:
+        description: 'Copilot model name passed as --model; empty uses the CLI default'
+        required: false
+        type: string
+        default: ''
+      node-version:
+        description: 'Node.js version for the scripts and the Copilot CLI'
+        required: false
+        type: string
+        default: '26'
+    secrets:
+      COPILOT_PAT:
+        description: |
+          Fine-grained PAT with the "Copilot Requests" permission (plus
+          public-repository read). Must NOT carry contents or pull-requests write.
+        required: true
+
+jobs:
+  select:
+    name: Select PRs
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      pull-requests: read
+    outputs:
+      prs: ${{ steps.pick.outputs.prs }}
+    steps:
+      - name: Checkout review toolkit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: duynhlab/gha-workflows
+          ref: ${{ job.workflow_sha }}
+          path: .renovate-review
+          sparse-checkout: .github/renovate-review
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Pick PRs
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ inputs.pr }}
+          INPUT_MAX: ${{ inputs.max }}
+          INPUT_FORCE: ${{ inputs.force }}
+          FIRST_PARTY_PREFIX: ${{ inputs.first-party-prefix }}
+          BOT_LOGIN: ${{ inputs.bot-login }}
+        run: node .renovate-review/.github/renovate-review/select.mjs
+
+  review:
+    name: "Review #${{ matrix.pr.number }}"
+    needs: select
+    if: needs.select.outputs.prs != '[]'
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        pr: ${{ fromJSON(needs.select.outputs.prs) }}
+    steps:
+      # Always the default branch: the AI reads the repository, never executes
+      # the PR branch.
+      - name: Checkout caller repository (default branch)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Checkout review toolkit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: duynhlab/gha-workflows
+          ref: ${{ job.workflow_sha }}
+          path: .renovate-review
+          sparse-checkout: .github/renovate-review
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Fetch PR inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ matrix.pr.number }}
+          RULES_FILE: ${{ inputs.rules-file }}
+          BOT_LOGIN: ${{ inputs.bot-login }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RULES_FILE" ]; then
+            echo "::error::rules-file '$RULES_FILE' does not exist in $GITHUB_REPOSITORY"
+            exit 1
+          fi
+          mkdir -p .review
+          cp "$RULES_FILE" .review/rules.md
+          echo "$GITHUB_REPOSITORY" > .review/repo.txt
+          gh pr view "$PR" --json number,title,body,headRefOid,baseRefName,files,labels,url > .review/pr.json
+          gh pr diff "$PR" > .review/pr.diff
+          # gh wants the app slug, not the API login, for --author.
+          gh pr list --author "app/${BOT_LOGIN%%\[bot\]}" --state open --limit 100 \
+            --json number,title,headRefName,url > .review/siblings.json
+          jq -r '"PR #\(.number) \(.title) @ \(.headRefOid[0:7])"' .review/pr.json
+
+      - name: Copilot review
+        env:
+          # Copilot Requests only; no repository write scope. Copilot reads it
+          # before GH_TOKEN, so the job token below stays read-only for gh.
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          if [ -z "${COPILOT_GITHUB_TOKEN:-}" ]; then
+            echo "::error::COPILOT_PAT secret is not set (fine-grained PAT with Copilot Requests)"
+            exit 1
+          fi
+          model_args=()
+          if [ -n "${COPILOT_MODEL:-}" ]; then model_args=(--model "$COPILOT_MODEL"); fi
+          # Deny rules win over --allow-all-tools: no PR writes, no API calls,
+          # no pushes, no outbound fetches from the job that reads untrusted text.
+          copilot -p "$(cat .renovate-review/.github/renovate-review/prompt.md)" \
+            --allow-all-tools \
+            --deny-tool='shell(gh pr)' \
+            --deny-tool='shell(gh api)' \
+            --deny-tool='shell(gh issue)' \
+            --deny-tool='shell(git push)' \
+            --deny-tool='shell(curl)' \
+            --deny-tool='shell(wget)' \
+            --output-format json --stream off --no-sandbox \
+            --trust-folder "$PWD" \
+            "${model_args[@]}" \
+            > .review/copilot.jsonl 2> .review/copilot.stderr || true
+          ls -l .review
+
+      - name: Validate review.json (retry once through Copilot)
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+          GH_TOKEN: ${{ github.token }}
+          TOOLKIT: .renovate-review/.github/renovate-review
+        run: |
+          set -euo pipefail
+          if node "$TOOLKIT/post.mjs" .review/review.json --check; then exit 0; fi
+          errors=$(node "$TOOLKIT/post.mjs" .review/review.json --check 2>&1 || true)
+          copilot -p "Fix .review/review.json so it satisfies $TOOLKIT/schema.json. Validator output:
+          $errors
+          Keep every finding; only correct structure, enums and required keys. Write only .review/review.json." \
+            --allow-all-tools \
+            --deny-tool='shell(gh pr)' --deny-tool='shell(gh api)' --deny-tool='shell(gh issue)' \
+            --deny-tool='shell(git push)' --deny-tool='shell(curl)' --deny-tool='shell(wget)' \
+            --output-format json --stream off --no-sandbox --trust-folder "$PWD" \
+            >> .review/copilot.jsonl 2>> .review/copilot.stderr || true
+          node "$TOOLKIT/post.mjs" .review/review.json --check
+
+      - name: Upload review artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: renovate-review-${{ matrix.pr.number }}
+          path: .review/
+          if-no-files-found: warn
+          retention-days: 14
+
+  post:
+    name: "Post #${{ matrix.pr.number }}"
+    needs: [select, review]
+    if: always() && needs.select.outputs.prs != '[]'
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJSON(needs.select.outputs.prs) }}
+    steps:
+      - name: Checkout review toolkit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: duynhlab/gha-workflows
+          ref: ${{ job.workflow_sha }}
+          path: .renovate-review
+          sparse-checkout: .github/renovate-review
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Download review artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: renovate-review-${{ matrix.pr.number }}
+          path: .review
+
+      - name: Post comment and labels
+        if: steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          if [ ! -f .review/review.json ]; then
+            echo "::warning::no review.json for #$PR_NUMBER; the review job failed, nothing posted"
+            exit 0
+          fi
+          node .renovate-review/.github/renovate-review/post.mjs .review/review.json
