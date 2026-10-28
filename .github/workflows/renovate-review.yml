@@ -231,8 +231,10 @@ jobs:
             --output-format json --stream off \
             --trust-folder \
             "${model_args[@]}" \
-            > .review/copilot.jsonl 2> .review/copilot.stderr || true
+            > .review/copilot.jsonl 2> .review/copilot.stderr || echo "copilot exited $?"
           ls -l .review
+          echo "::group::copilot stderr"; cat .review/copilot.stderr; echo "::endgroup::"
+          echo "::group::copilot jsonl (last 40 lines)"; tail -n 40 .review/copilot.jsonl | cut -c1-400; echo "::endgroup::"
 
       - name: Validate review.json (retry once through Copilot)
         env:
@@ -250,7 +252,8 @@ jobs:
             --deny-tool='shell(gh pr)' --deny-tool='shell(gh api)' --deny-tool='shell(gh issue)' \
             --deny-tool='shell(git push)' --deny-tool='shell(curl)' --deny-tool='shell(wget)' \
             --output-format json --stream off --trust-folder \
-            >> .review/copilot.jsonl 2>> .review/copilot.stderr || true
+            >> .review/copilot.jsonl 2>> .review/copilot.stderr || echo "copilot exited $?"
+          echo "::group::copilot stderr (retry)"; tail -n 40 .review/copilot.stderr; echo "::endgroup::"
           node "$TOOLKIT/post.mjs" .review/review.json --check
 
       - name: Upload review artifact
@@ -259,6 +262,9 @@ jobs:
         with:
           name: renovate-review-${{ matrix.pr.number }}
           path: .review/
+          # .review is a dot-directory; upload-artifact skips hidden files
+          # unless told otherwise, and the post job needs review.json.
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
