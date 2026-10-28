@@ -1,0 +1,148 @@
+name: Delete workflow runs
+
+# Deletes finished Actions runs in the repository that calls this workflow.
+# There is no bulk-delete API, so each run is removed with its own DELETE.
+# The run executing this workflow is never deleted.
+
+on:
+  workflow_dispatch:
+    inputs:
+      retain_days:
+        description: "Delete finished runs older than this many days. 0 deletes every finished run."
+        required: false
+        type: number
+        default: 30
+      dry_run:
+        description: "Log the runs that would be deleted and do not delete them."
+        required: false
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      retain_days:
+        description: "Delete finished runs older than this many days. 0 deletes every finished run."
+        required: false
+        type: number
+        default: 30
+      dry_run:
+        description: "Log the runs that would be deleted and do not delete them."
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  delete-runs:
+    name: Delete workflow runs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    concurrency:
+      group: delete-workflow-runs-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Delete finished workflow runs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          RETAIN_DAYS: ${{ inputs.retain_days }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        with:
+          script: |
+            const rawDays = process.env.RETAIN_DAYS;
+            const retainDays = rawDays === undefined || rawDays === '' ? 30 : Number(rawDays);
+            if (!Number.isInteger(retainDays) || retainDays < 0) {
+              core.setFailed(`retain_days must be an integer >= 0, got "${rawDays}"`);
+              return;
+            }
+
+            // Anything other than the string "false" stays a preview. A caller
+            // that forgets the input cannot wipe run history.
+            const dryRun = process.env.DRY_RUN !== 'false';
+            const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
+            const { owner, repo } = context.repo;
+
+            const candidates = [];
+            let kept = 0;
+            let skipped = 0;
+            let page = 1;
+
+            for (;;) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                per_page: 100,
+                page,
+              });
+              const runs = data.workflow_runs || [];
+              if (runs.length === 0) break;
+
+              for (const run of runs) {
+                if (run.id === context.runId || run.status !== 'completed') {
+                  skipped++;
+                  continue;
+                }
+                if (retainDays > 0 && Date.parse(run.created_at) >= cutoff) {
+                  kept++;
+                  continue;
+                }
+                candidates.push(run);
+              }
+
+              if (runs.length < 100) break;
+              page++;
+            }
+
+            core.info(
+              `${dryRun ? 'Dry run' : 'Delete'}: ${candidates.length} finished run(s) ` +
+              `older than ${retainDays} day(s); kept ${kept}; skipped ${skipped}.`
+            );
+
+            const deleted = [];
+            for (const run of candidates) {
+              const line = `${run.id}  ${run.created_at}  ${run.name}  ${run.conclusion || ''}  ${run.html_url}`;
+              if (dryRun) {
+                core.info(`would delete  ${line}`);
+                deleted.push(run);
+                continue;
+              }
+
+              await deleteRun(run.id);
+              core.info(`deleted  ${line}`);
+              deleted.push(run);
+            }
+
+            const verb = dryRun ? 'Would delete' : 'Deleted';
+            await core.summary
+              .addHeading('Delete workflow runs')
+              .addRaw(`Repository \`${owner}/${repo}\`. Retain days: ${retainDays}. Mode: ${dryRun ? 'dry run' : 'delete'}.`, true)
+              .addTable([
+                [{ data: 'Result', header: true }, { data: 'Count', header: true }],
+                [verb, String(deleted.length)],
+                ['Kept (within retain_days)', String(kept)],
+                ['Skipped (still running, or this run)', String(skipped)],
+              ])
+              .write();
+
+            async function deleteRun(runId) {
+              for (let attempt = 1; attempt <= 5; attempt++) {
+                try {
+                  await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: runId });
+                  return;
+                } catch (error) {
+                  const status = error.status;
+                  const message = String(error.message || '');
+                  const rateLimited = status === 429 || /rate limit/i.test(message);
+                  if (rateLimited && attempt < 5) {
+                    const retryAfter = Number(error.response?.headers?.['retry-after'] || 0);
+                    const waitMs = (retryAfter > 0 ? retryAfter : attempt * 2) * 1000;
+                    core.warning(`delete ${runId} was rate limited, retry ${attempt}/4 in ${waitMs}ms`);
+                    await new Promise((resolve) => setTimeout(resolve, waitMs));
+                    continue;
+                  }
+                  if (status === 404) return;
+                  throw new Error(
+                    `Failed to delete run ${runId}: ${message}. The token needs actions: write on this repository.`
+                  );
+                }
+              }
+            }
