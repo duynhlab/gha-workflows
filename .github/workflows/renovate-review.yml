@@ -219,8 +219,8 @@ jobs:
             --deny-tool='shell(git push)' \
             --deny-tool='shell(curl)' \
             --deny-tool='shell(wget)' \
-            --output-format json --stream off --no-sandbox \
-            --trust-folder "$PWD" \
+            --output-format json --stream off \
+            --trust-folder \
             "${model_args[@]}" \
             > .review/copilot.jsonl 2> .review/copilot.stderr || true
           ls -l .review
@@ -240,7 +240,7 @@ jobs:
             --allow-all-tools \
             --deny-tool='shell(gh pr)' --deny-tool='shell(gh api)' --deny-tool='shell(gh issue)' \
             --deny-tool='shell(git push)' --deny-tool='shell(curl)' --deny-tool='shell(wget)' \
-            --output-format json --stream off --no-sandbox --trust-folder "$PWD" \
+            --output-format json --stream off --trust-folder \
             >> .review/copilot.jsonl 2>> .review/copilot.stderr || true
           node "$TOOLKIT/post.mjs" .review/review.json --check
 
