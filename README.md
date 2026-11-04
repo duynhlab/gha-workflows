@@ -53,6 +53,7 @@ Complete caller workflows for a Go service: **[examples/](examples/)**.
 | **[sonarqube.yml](.github/workflows/sonarqube.yml)** | SonarCloud analysis | Go coverage (unit + integration), Quality Gate |
 | **[tf-lint.yml](.github/workflows/tf-lint.yml)** | Terraform validation | Format check, TFLint analysis |
 | **[status.yml](.github/workflows/status.yml)** | Build notifications | Slack, Google Sheets, job summaries |
+| **[renovate-review.yml](.github/workflows/renovate-review.yml)** | AI review of a Renovate PR | Copilot CLI reads the release notes against the repo, one schema-validated comment + `impact/*` labels, read-only AI job, dry-run first |
 | **[delete-workflow-runs.yml](.github/workflows/delete-workflow-runs.yml)** | Delete old Actions runs | Manual cleanup, retain window, dry run by default |
 
 > **Pipeline pattern:** the builder workflows scan with Trivy **before** pushing, so an image only

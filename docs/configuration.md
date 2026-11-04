@@ -13,6 +13,7 @@ Set these in the calling repository: **Settings → Secrets and variables → Ac
 | `SONAR_TOKEN` | `sonarqube.yml` | **Yes** | SonarCloud authentication token |
 | `GSHEET_CLIENT_EMAIL` | `status.yml`, `trivy-scan.yml` | No | Google service account email (Sheets reporting) |
 | `GSHEET_PRIVATE_KEY` | `status.yml`, `trivy-scan.yml` | No | Google service account private key (Sheets reporting) |
+| `COPILOT_PAT` | `renovate-review.yml` | **Yes** | Fine-grained PAT with the *Copilot Requests* permission and public-repository read; must carry no write scopes |
 
 Workflows that need **no secrets at all**: `go-security.yml`, `codeql.yml`, `govulncheck.yml`,
 `dependency-review.yml`, `gitleaks.yml`, `tf-lint.yml`. Do not pass `secrets: inherit` to them —
